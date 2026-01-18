@@ -1,5 +1,6 @@
 "use client"
 
+import { ConnectionSelector } from "@/components/common/connection-selector/base"
 import { MultiModelSelector } from "@/components/common/multi-model-selector/base"
 import {
   PromptInput,
@@ -25,6 +26,10 @@ type MultiChatInputProps = {
   stop: () => void
   status?: "submitted" | "streaming" | "ready" | "error"
   anyLoading?: boolean
+  // Connection selector props
+  selectedConnectionIds: string[]
+  onSelectedConnectionIdsChange: (connectionIds: string[]) => void
+  maxConnections?: number
 }
 
 export function MultiChatInput({
@@ -34,9 +39,13 @@ export function MultiChatInput({
   isSubmitting,
   selectedModelIds,
   onSelectedModelIdsChange,
+  isUserAuthenticated,
   stop,
   status,
   anyLoading,
+  selectedConnectionIds,
+  onSelectedConnectionIdsChange,
+  maxConnections = 5,
 }: MultiChatInputProps) {
   const isOnlyWhitespace = (text: string) => !/[^\s]/.test(text)
 
@@ -96,6 +105,15 @@ export function MultiChatInput({
               <MultiModelSelector
                 selectedModelIds={selectedModelIds}
                 setSelectedModelIds={onSelectedModelIdsChange}
+                isUserAuthenticated={isUserAuthenticated}
+              />
+              <ConnectionSelector
+                selectedConnectionIds={selectedConnectionIds}
+                setSelectedConnectionIds={onSelectedConnectionIdsChange}
+                multiSelect={true}
+                maxConnections={maxConnections}
+                isUserAuthenticated={isUserAuthenticated}
+                className="rounded-full"
               />
             </div>
             <PromptInputAction

@@ -32,6 +32,9 @@ type GroupedMessage = {
 export function MultiChat() {
   const [prompt, setPrompt] = useState("")
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([])
+  const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(
+    []
+  )
   const [files, setFiles] = useState<File[]>([])
   const [multiChatId, setMultiChatId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -344,6 +347,8 @@ export function MultiChat() {
       stop: handleStop,
       status: anyLoading ? ("streaming" as const) : ("ready" as const),
       anyLoading,
+      selectedConnectionIds,
+      onSelectedConnectionIdsChange: setSelectedConnectionIds,
     }),
     [
       prompt,
@@ -356,6 +361,7 @@ export function MultiChat() {
       isAuthenticated,
       handleStop,
       anyLoading,
+      selectedConnectionIds,
     ]
   )
 
