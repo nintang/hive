@@ -18,14 +18,11 @@ export async function createChatInDb({
   isAuthenticated,
   projectId,
 }: CreateChatInput) {
-  console.log("[createChatInDb] Starting with:", { userId, title, model, isAuthenticated, projectId })
-
   const db = await validateUserIdentity(userId, isAuthenticated)
-  console.log("[createChatInDb] validateUserIdentity result:", db ? "db obtained" : "null (D1 not configured)")
 
   // If D1 is not configured, return a local-only chat object
   if (!db) {
-    const localChat = {
+    return {
       id: crypto.randomUUID(),
       user_id: userId,
       title: title || "New Chat",
@@ -34,16 +31,12 @@ export async function createChatInDb({
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    console.log("[createChatInDb] Returning local-only chat:", localChat)
-    return localChat
   }
 
-  console.log("[createChatInDb] Checking usage by model...")
   await checkUsageByModel(db, userId, model, isAuthenticated)
 
   const chatId = crypto.randomUUID()
   const now = new Date().toISOString()
-  console.log("[createChatInDb] Inserting chat with id:", chatId)
 
   await db
     .insert(chats)
@@ -58,19 +51,16 @@ export async function createChatInDb({
     })
     .run()
 
-  console.log("[createChatInDb] Insert complete, fetching created chat...")
-
   // Fetch the created chat
   const data = await db.select().from(chats).where(eq(chats.id, chatId)).get()
-  console.log("[createChatInDb] Fetched data:", data)
 
   if (!data) {
-    console.error("[createChatInDb] Error: failed to retrieve created chat")
+    console.error("Error creating chat: failed to retrieve created chat")
     return null
   }
 
   // Return in snake_case format for backwards compatibility
-  const result = {
+  return {
     id: data.id,
     user_id: data.userId,
     title: data.title,
@@ -79,6 +69,4 @@ export async function createChatInDb({
     created_at: data.createdAt,
     updated_at: data.updatedAt,
   }
-  console.log("[createChatInDb] Returning result:", result)
-  return result
 }

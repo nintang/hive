@@ -79,13 +79,6 @@ async function executeD1Query(
 
   const results = data.result?.[0]?.results || []
 
-  // Debug: log raw D1 response
-  if (sql.includes("user_preferences")) {
-    console.log("[D1 DEBUG] SQL:", sql)
-    console.log("[D1 DEBUG] Raw results:", JSON.stringify(results))
-    console.log("[D1 DEBUG] Method:", method)
-  }
-
   // Handle different methods
   // sqlite-proxy expects rows as arrays of values, not objects
   // The column order must match the SELECT order in the SQL
@@ -103,15 +96,9 @@ async function executeD1Query(
   // Convert results to arrays of values
   const rowArrays = results.map((row) => Object.values(row))
 
-  if (sql.includes("user_preferences")) {
-    console.log("[D1 DEBUG] Returning row arrays:", JSON.stringify(rowArrays))
-    console.log("[D1 DEBUG] Method:", method)
-  }
-
   // For "get", return a single row as { rows: array } (flat array, not nested)
   // For "all", return all rows as { rows: array of arrays }
   if (method === "get") {
-    // Return the first row as a flat array, or empty array if no results
     return { rows: rowArrays[0] || [] }
   }
 

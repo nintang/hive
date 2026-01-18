@@ -10,8 +10,6 @@ async function ensureClerkUserExists(
   db: ReturnType<typeof getDb>,
   clerkUserId: string
 ) {
-  console.log("[ensureClerkUserExists] Checking for user:", clerkUserId)
-
   // Check if user already exists
   const existingUser = await db
     .select({ id: users.id })
@@ -19,17 +17,13 @@ async function ensureClerkUserExists(
     .where(eq(users.id, clerkUserId))
     .get()
 
-  console.log("[ensureClerkUserExists] Query result:", existingUser, "type:", typeof existingUser)
-
   // Handle both object format {id: ...} and array format [...]
   const userId = existingUser?.id ?? (Array.isArray(existingUser) ? existingUser[0] : null)
 
   if (userId) {
-    console.log("[ensureClerkUserExists] User exists with id:", userId)
     return { id: userId }
   }
 
-  console.log("[ensureClerkUserExists] User doesn't exist, creating...")
   // User doesn't exist, create them
   const clerkUser = await currentUser()
   if (!clerkUser) {
@@ -40,26 +34,20 @@ async function ensureClerkUserExists(
   const displayName = clerkUser.fullName || clerkUser.firstName || null
   const profileImage = clerkUser.imageUrl || null
 
-  try {
-    await db
-      .insert(users)
-      .values({
-        id: clerkUserId,
-        email,
-        displayName,
-        profileImage,
-        anonymous: false,
-        premium: false,
-        messageCount: 0,
-        createdAt: new Date().toISOString(),
-        lastActiveAt: new Date().toISOString(),
-      })
-      .run()
-    console.log("[ensureClerkUserExists] User created successfully:", clerkUserId)
-  } catch (err) {
-    console.error("[ensureClerkUserExists] Failed to create user:", err)
-    throw err
-  }
+  await db
+    .insert(users)
+    .values({
+      id: clerkUserId,
+      email,
+      displayName,
+      profileImage,
+      anonymous: false,
+      premium: false,
+      messageCount: 0,
+      createdAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    })
+    .run()
 
   return { id: clerkUserId }
 }

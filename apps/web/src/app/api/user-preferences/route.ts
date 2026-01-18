@@ -100,13 +100,8 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  console.log("[user-preferences PUT] Starting...")
   try {
-    const d1Enabled = isD1Enabled()
-    console.log("[user-preferences PUT] D1 enabled:", d1Enabled)
-
-    if (!d1Enabled) {
-      console.log("[user-preferences PUT] D1 not enabled, returning error")
+    if (!isD1Enabled()) {
       return NextResponse.json(
         { error: "Database connection failed" },
         { status: 500 }
@@ -114,16 +109,12 @@ export async function PUT(request: NextRequest) {
     }
 
     const { userId } = await auth()
-    console.log("[user-preferences PUT] userId from auth:", userId)
 
     if (!userId) {
-      console.log("[user-preferences PUT] No userId, returning 401")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Parse the request body
     const body = await request.json()
-    console.log("[user-preferences PUT] Request body:", JSON.stringify(body))
 
     const {
       layout,
@@ -150,29 +141,17 @@ export async function PUT(request: NextRequest) {
     }
 
     const db = getDb()
-    console.log("[user-preferences PUT] Got db instance")
 
     // Ensure the user exists in the database before saving preferences
-    console.log("[user-preferences PUT] Ensuring user exists...")
-    try {
-      await ensureUserExists(db, userId)
-      console.log("[user-preferences PUT] User exists or was created")
-    } catch (userError) {
-      console.error("[user-preferences PUT] Error ensuring user exists:", userError)
-      throw userError
-    }
+    await ensureUserExists(db, userId)
 
     // Check if user preferences exist
-    console.log("[user-preferences PUT] Checking existing preferences...")
     const existing = await db
       .select({ userId: userPreferences.userId })
       .from(userPreferences)
       .where(eq(userPreferences.userId, userId))
       .get()
-    console.log("[user-preferences PUT] Existing preferences:", existing)
-    // Check if we actually got a valid row (userId will be undefined if no row exists)
     const hasExisting = existing?.userId !== undefined
-    console.log("[user-preferences PUT] Has existing row:", hasExisting)
 
     const now = new Date().toISOString()
 
@@ -189,65 +168,46 @@ export async function PUT(request: NextRequest) {
       updateData.multiModelEnabled = multi_model_enabled
     if (hidden_models !== undefined) updateData.hiddenModels = JSON.stringify(hidden_models)
 
-    console.log("[user-preferences PUT] Update data:", JSON.stringify(updateData))
-
     if (!hasExisting) {
       // Insert new preferences
-      console.log("[user-preferences PUT] Inserting new preferences...")
-      try {
-        await db
-          .insert(userPreferences)
-          .values({
-            userId,
-            layout: layout || "fullscreen",
-            promptSuggestions: prompt_suggestions ?? true,
-            showToolInvocations: show_tool_invocations ?? true,
-            showConversationPreviews: show_conversation_previews ?? true,
-            multiModelEnabled: multi_model_enabled ?? false,
-            hiddenModels: JSON.stringify(hidden_models || []),
-            createdAt: now,
-            updatedAt: now,
-          })
-          .run()
-        console.log("[user-preferences PUT] Insert successful")
-      } catch (insertError) {
-        console.error("[user-preferences PUT] Insert error:", insertError)
-        throw insertError
-      }
+      await db
+        .insert(userPreferences)
+        .values({
+          userId,
+          layout: layout || "fullscreen",
+          promptSuggestions: prompt_suggestions ?? true,
+          showToolInvocations: show_tool_invocations ?? true,
+          showConversationPreviews: show_conversation_previews ?? true,
+          multiModelEnabled: multi_model_enabled ?? false,
+          hiddenModels: JSON.stringify(hidden_models || []),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
     } else {
       // Update existing preferences
-      console.log("[user-preferences PUT] Updating existing preferences...")
-      try {
-        await db
-          .update(userPreferences)
-          .set(updateData)
-          .where(eq(userPreferences.userId, userId))
-          .run()
-        console.log("[user-preferences PUT] Update successful")
-      } catch (updateError) {
-        console.error("[user-preferences PUT] Update error:", updateError)
-        throw updateError
-      }
+      await db
+        .update(userPreferences)
+        .set(updateData)
+        .where(eq(userPreferences.userId, userId))
+        .run()
     }
 
     // Fetch the updated data
-    console.log("[user-preferences PUT] Fetching updated data...")
     const data = await db
       .select()
       .from(userPreferences)
       .where(eq(userPreferences.userId, userId))
       .get()
-    console.log("[user-preferences PUT] Fetched data:", data)
 
     if (!data) {
-      console.log("[user-preferences PUT] No data returned after update")
       return NextResponse.json(
         { error: "Failed to update user preferences" },
         { status: 500 }
       )
     }
 
-    const response = {
+    return NextResponse.json({
       success: true,
       layout: data.layout,
       prompt_suggestions: data.promptSuggestions,
@@ -255,11 +215,9 @@ export async function PUT(request: NextRequest) {
       show_conversation_previews: data.showConversationPreviews,
       multi_model_enabled: data.multiModelEnabled,
       hidden_models: data.hiddenModels ? JSON.parse(data.hiddenModels) : [],
-    }
-    console.log("[user-preferences PUT] Returning success:", JSON.stringify(response))
-    return NextResponse.json(response)
+    })
   } catch (error) {
-    console.error("[user-preferences PUT] Error:", error)
+    console.error("Error in user-preferences PUT API:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
