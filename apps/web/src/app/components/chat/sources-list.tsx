@@ -1,15 +1,21 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { SourceUIPart } from "@ai-sdk/ui-utils"
 import { CaretDown, Link } from "@phosphor-icons/react"
 import { AnimatePresence, motion } from "motion/react"
 import Image from "next/image"
 import { useState } from "react"
 import { addUTM, formatUrl, getFavicon } from "./utils"
 
+// Flexible source type that works with both legacy and v6 formats
+type Source = {
+  url: string
+  title?: string
+  id?: string
+}
+
 type SourcesListProps = {
-  sources: SourceUIPart["source"][]
+  sources: Source[]
   className?: string
 }
 
@@ -85,13 +91,13 @@ export function SourcesList({ sources, className }: SourcesListProps) {
               className="overflow-hidden"
             >
               <ul className="space-y-2 px-3 pt-3 pb-3">
-                {sources.map((source) => {
+                {sources.map((source, index) => {
                   const faviconUrl = getFavicon(source.url)
                   const showFallback =
                     !faviconUrl || failedFavicons.has(source.url)
 
                   return (
-                    <li key={source.id} className="flex items-center text-sm">
+                    <li key={source.id || `${source.url}-${index}`} className="flex items-center text-sm">
                       <div className="min-w-0 flex-1 overflow-hidden">
                         <a
                           href={addUTM(source.url)}

@@ -6,6 +6,7 @@ import { Loader } from "@/components/prompt-kit/loader"
 import { ScrollButton } from "@/components/prompt-kit/scroll-button"
 import { ExtendedMessageAISDK } from "@/lib/chat-store/messages/api"
 import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
+import type { UIMessage } from "ai"
 import { useState } from "react"
 import { Message } from "./message"
 
@@ -54,18 +55,21 @@ export function Conversation({
             const hasScrollAnchor =
               isLast && messages.length > initialMessageCount
 
+            // Filter out "data" role messages and cast parts for type compatibility
+            const validRole = message.role === "data" ? "assistant" : message.role as "user" | "assistant" | "system"
+
             return (
               <Message
                 key={message.id}
                 id={message.id}
-                variant={message.role}
+                variant={validRole}
                 attachments={message.experimental_attachments}
                 isLast={isLast}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onReload={onReload}
                 hasScrollAnchor={hasScrollAnchor}
-                parts={message.parts}
+                parts={message.parts as UIMessage["parts"]}
                 status={status}
                 onQuote={onQuote}
                 messageGroupId={
@@ -73,7 +77,7 @@ export function Conversation({
                 }
                 isUserAuthenticated={isUserAuthenticated}
               >
-                {message.content || message.parts?.find((p): p is { type: "text"; text: string } => p.type === "text")?.text || ""}
+                {message.content || message.parts?.filter((p): p is { type: "text"; text: string } => p.type === "text").map(p => p.text).join("\n\n") || ""}
               </Message>
             )
           })}

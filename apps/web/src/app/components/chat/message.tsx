@@ -1,19 +1,20 @@
-import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
+import type { UIMessage } from "ai"
+import type { Attachment } from "@ai-sdk/ui-utils"
 import React, { useState } from "react"
 import { MessageAssistant } from "./message-assistant"
 import { MessageUser } from "./message-user"
 
 type MessageProps = {
-  variant: MessageAISDK["role"]
+  variant: "user" | "assistant" | "system"
   children: string
   id: string
-  attachments?: MessageAISDK["experimental_attachments"]
+  attachments?: Attachment[]
   isLast?: boolean
   onDelete: (id: string) => void
   onEdit: (id: string, newText: string) => Promise<void> | void
   onReload: () => void
   hasScrollAnchor?: boolean
-  parts?: MessageAISDK["parts"]
+  parts?: UIMessage["parts"]
   status?: "streaming" | "ready" | "submitted" | "error"
   className?: string
   onQuote?: (text: string, messageId: string) => void
