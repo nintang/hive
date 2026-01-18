@@ -3,14 +3,15 @@ import {
   getAllProjects as getAllMockProjects,
   getMockUserId,
 } from "@/lib/mock/projects-store"
-import { getDb, isD1Enabled, projects } from "@/lib/db"
+import { getDb, isD1Enabled, projects, projectSkills } from "@/lib/db"
 import { auth } from "@clerk/nextjs/server"
 import { eq, asc } from "drizzle-orm"
 import { NextResponse } from "next/server"
+import { SKILLS } from "@/lib/skills"
 
 export async function POST(request: Request) {
   try {
-    const { name } = await request.json()
+    const { name, skillIds = [] } = await request.json()
 
     // If D1 is not available, use mock store
     if (!isD1Enabled()) {
@@ -42,6 +43,23 @@ export async function POST(request: Request) {
       })
       .run()
 
+    // Enable selected skills for the project
+    if (skillIds.length > 0) {
+      const validSkillIds = skillIds.filter((id: string) => SKILLS[id])
+      for (const skillId of validSkillIds) {
+        await db
+          .insert(projectSkills)
+          .values({
+            id: crypto.randomUUID(),
+            projectId,
+            skillId,
+            enabled: true,
+            createdAt: now,
+          })
+          .run()
+      }
+    }
+
     const data = await db
       .select()
       .from(projects)
@@ -58,6 +76,7 @@ export async function POST(request: Request) {
       name: data.name,
       user_id: data.userId,
       created_at: data.createdAt,
+      skill_ids: skillIds,
     })
   } catch (err: unknown) {
     console.error("Error in projects endpoint:", err)

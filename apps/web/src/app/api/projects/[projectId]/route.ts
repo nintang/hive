@@ -54,6 +54,10 @@ export async function GET(
       id: data.id,
       name: data.name,
       user_id: data.userId,
+      last_model_id: data.lastModelId,
+      last_connection_ids: data.lastConnectionIds
+        ? JSON.parse(data.lastConnectionIds)
+        : null,
       created_at: data.createdAt,
     })
   } catch (err: unknown) {
@@ -73,11 +77,21 @@ export async function PUT(
 ) {
   try {
     const { projectId } = await params
-    const { name } = await request.json()
+    const body = await request.json()
+    const { name, lastModelId, lastConnectionIds } = body
 
-    if (!name?.trim()) {
+    // At least one field must be provided
+    if (name === undefined && lastModelId === undefined && lastConnectionIds === undefined) {
       return NextResponse.json(
-        { error: "Project name is required" },
+        { error: "At least one field (name, lastModelId, lastConnectionIds) is required" },
+        { status: 400 }
+      )
+    }
+
+    // If name is provided, it must not be empty
+    if (name !== undefined && !name?.trim()) {
+      return NextResponse.json(
+        { error: "Project name cannot be empty" },
         { status: 400 }
       )
     }
@@ -85,11 +99,15 @@ export async function PUT(
     // If D1 is not available, use mock store
     if (!isD1Enabled()) {
       const userId = getMockUserId()
-      const project = updateMockProject(projectId, name.trim(), userId)
-      if (!project) {
-        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      if (name !== undefined) {
+        const project = updateMockProject(projectId, name.trim(), userId)
+        if (!project) {
+          return NextResponse.json({ error: "Project not found" }, { status: 404 })
+        }
+        return NextResponse.json(project)
       }
-      return NextResponse.json(project)
+      // Mock store doesn't support model/connection updates, just return success
+      return NextResponse.json({ success: true })
     }
 
     const { userId } = await auth()
@@ -97,18 +115,40 @@ export async function PUT(
     if (!userId) {
       // Fall back to mock if not authenticated
       const mockId = getMockUserId()
-      const project = updateMockProject(projectId, name.trim(), mockId)
-      if (!project) {
-        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      if (name !== undefined) {
+        const project = updateMockProject(projectId, name.trim(), mockId)
+        if (!project) {
+          return NextResponse.json({ error: "Project not found" }, { status: 404 })
+        }
+        return NextResponse.json(project)
       }
-      return NextResponse.json(project)
+      return NextResponse.json({ success: true })
     }
 
     const db = getDb()
 
+    // Build the update object dynamically
+    const updateData: {
+      name?: string
+      lastModelId?: string | null
+      lastConnectionIds?: string | null
+    } = {}
+
+    if (name !== undefined) {
+      updateData.name = name.trim()
+    }
+    if (lastModelId !== undefined) {
+      updateData.lastModelId = lastModelId
+    }
+    if (lastConnectionIds !== undefined) {
+      updateData.lastConnectionIds = lastConnectionIds
+        ? JSON.stringify(lastConnectionIds)
+        : null
+    }
+
     await db
       .update(projects)
-      .set({ name: name.trim() })
+      .set(updateData)
       .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
       .run()
 
@@ -127,6 +167,10 @@ export async function PUT(
       id: data.id,
       name: data.name,
       user_id: data.userId,
+      last_model_id: data.lastModelId,
+      last_connection_ids: data.lastConnectionIds
+        ? JSON.parse(data.lastConnectionIds)
+        : null,
       created_at: data.createdAt,
     })
   } catch (err: unknown) {
