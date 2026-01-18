@@ -384,6 +384,11 @@ export function ConnectionSelector({
     )
   }
 
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return trigger
+  }
+
   // Mobile: Use Drawer
   if (isMobile) {
     return (

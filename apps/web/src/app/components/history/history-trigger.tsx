@@ -62,6 +62,11 @@ export function HistoryTrigger({
     </button>
   )
 
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return defaultTrigger
+  }
+
   if (isMobile) {
     return (
       <DrawerHistory

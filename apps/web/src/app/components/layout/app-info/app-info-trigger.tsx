@@ -37,6 +37,11 @@ export function AppInfoTrigger({ trigger }: AppInfoTriggerProps) {
     </DropdownMenuItem>
   )
 
+  // Return null during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return trigger || defaultTrigger
+  }
+
   if (isMobile) {
     return (
       <Drawer>

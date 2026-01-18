@@ -111,6 +111,11 @@ export function ProModelDialog({
     </div>
   )
 
+  // Return null during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return null
+  }
+
   if (isMobile) {
     return (
       <Drawer open={isOpen} onOpenChange={setIsOpen}>

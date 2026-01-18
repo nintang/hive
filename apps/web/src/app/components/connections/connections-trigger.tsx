@@ -48,6 +48,11 @@ export function ConnectionsTrigger({
     </button>
   )
 
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return defaultTrigger
+  }
+
   if (isMobile) {
     return (
       <DrawerConnections

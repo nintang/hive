@@ -35,6 +35,11 @@ export function SettingsTrigger({ onOpenChange }: SettingsTriggerProps) {
     </DropdownMenuItem>
   )
 
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return trigger
+  }
+
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={handleOpenChange}>

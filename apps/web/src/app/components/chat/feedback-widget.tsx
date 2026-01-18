@@ -34,7 +34,8 @@ export function FeedbackWidget({ authUserId }: FeedbackWidgetProps) {
     setIsOpen(false)
   }
 
-  if (isMobileOrTablet || !authUserId) {
+  // Return null during SSR or on mobile/tablet to avoid hydration mismatch
+  if (isMobileOrTablet === null || isMobileOrTablet || !authUserId) {
     return null
   }
 
