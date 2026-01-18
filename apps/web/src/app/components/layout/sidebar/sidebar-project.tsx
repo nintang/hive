@@ -42,7 +42,7 @@ export function SidebarProject() {
 
       {isLoading ? null : (
         <div className="space-y-1">
-          {projects.map((project) => (
+          {Array.isArray(projects) && projects.map((project) => (
             <SidebarProjectItem key={project.id} project={project} />
           ))}
         </div>
