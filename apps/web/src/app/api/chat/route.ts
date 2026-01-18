@@ -30,6 +30,7 @@ type ChatRequest = {
   message_group_id?: string
   editCutoffTimestamp?: string
   selectedConnectionIds?: string[]
+  projectId?: string // For loading project-specific skills
 }
 
 export async function POST(req: Request) {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
       message_group_id,
       editCutoffTimestamp,
       selectedConnectionIds,
+      projectId,
     } = (await req.json()) as ChatRequest
 
     console.log("[Chat API] Request received:", {
@@ -211,11 +213,65 @@ export async function POST(req: Request) {
       }
     }
 
-    // Build system prompt with toolkit context so the LLM knows which tools are available
+    // Load E2B skills tools if project has skills enabled
+    let skillsTools: ToolSet = {}
+    let enabledSkillIds: string[] = []
+    if (projectId && isAuthenticated && db) {
+      try {
+        const { projectSkills } = await import("@/lib/db")
+        const { and, eq } = await import("drizzle-orm")
+        const { buildSkillsTools } = await import("@/lib/skills")
+
+        // Get enabled skills for this project
+        const projectSkillsData = await db
+          .select()
+          .from(projectSkills)
+          .where(and(eq(projectSkills.projectId, projectId), eq(projectSkills.enabled, true)))
+          .all()
+
+        enabledSkillIds = projectSkillsData.map((ps) => ps.skillId)
+
+        if (enabledSkillIds.length > 0) {
+          console.log("[Skills] Loading skills for project:", projectId)
+          console.log("[Skills] Enabled skill IDs:", enabledSkillIds)
+
+          // Build execute_code tool with the enabled skills
+          skillsTools = buildSkillsTools({
+            skillIds: enabledSkillIds,
+            userId,
+            chatId,
+          })
+
+          console.log("[Skills] Tools loaded:", Object.keys(skillsTools))
+        }
+      } catch (err) {
+        console.error("Failed to load skills tools:", err)
+        // Continue without skills tools if there's an error
+      }
+    }
+
+    // Merge Composio tools and Skills tools
+    const allTools: ToolSet = { ...composioTools, ...skillsTools }
+
+    // Build system prompt with toolkit and skills context
     let systemPromptWithContext = effectiveSystemPrompt
+
+    // Add Composio toolkit context
     if (activeToolkitSlugs.length > 0) {
       const toolkitContext = `\n\n## Connected Tools\nYou have access to the following connected services: ${activeToolkitSlugs.join(", ")}.\nWhen searching for tools or performing actions, focus ONLY on these connected services. Do not suggest or search for tools from other services.`
-      systemPromptWithContext = effectiveSystemPrompt + toolkitContext
+      systemPromptWithContext += toolkitContext
+    }
+
+    // Add E2B skills context
+    if (enabledSkillIds.length > 0) {
+      const { getSkill } = await import("@/lib/skills")
+      const skillNames = enabledSkillIds
+        .map((id) => getSkill(id)?.name)
+        .filter(Boolean)
+        .join(", ")
+
+      const skillsContext = `\n\n## Code Execution Skills\nYou have access to the execute_code tool which can run Python code in a secure sandbox. The following skills are enabled: ${skillNames}.\n\nWhen creating documents (Excel, PowerPoint, PDF, Word), charts, or running data analysis:\n1. Use the execute_code tool to run Python code\n2. Save output files to the current directory\n3. The files will be automatically uploaded and made available for download\n4. Always print helpful output so the user knows what happened`
+      systemPromptWithContext += skillsContext
     }
 
     // Filter out data messages and transform for API compatibility
@@ -251,7 +307,7 @@ export async function POST(req: Request) {
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     // Type casts are required for AI SDK v6 compatibility with model providers
-    const hasTools = Object.keys(composioTools).length > 0
+    const hasTools = Object.keys(allTools).length > 0
 
     // Let AI SDK handle telemetry via experimental_telemetry
     // OpenInference will automatically capture spans and group them by session
@@ -259,7 +315,7 @@ export async function POST(req: Request) {
       model: modelApiSdk(apiKey, { enableSearch }) as any,
       system: systemPromptWithContext,
       messages: apiMessages as any,
-      tools: composioTools,
+      tools: allTools,
       // AI SDK v6: Use stopWhen instead of maxSteps for multi-step tool execution
       // Only enable multi-step when tools are available
       stopWhen: hasTools ? stepCountIs(10) : stepCountIs(1),
@@ -270,7 +326,9 @@ export async function POST(req: Request) {
           userId,
           model,
           hasTools: String(hasTools),
-          toolCount: String(Object.keys(composioTools).length),
+          toolCount: String(Object.keys(allTools).length),
+          hasSkills: String(enabledSkillIds.length > 0),
+          skillIds: enabledSkillIds.join(","),
         },
       },
       onError: (err: unknown) => {
