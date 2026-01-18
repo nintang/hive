@@ -12,7 +12,7 @@ const nextConfig: NextConfig = withBundleAnalyzer({
   experimental: {
     optimizePackageImports: ["@phosphor-icons/react"],
   },
-  serverExternalPackages: ["shiki", "vscode-oniguruma"],
+  serverExternalPackages: ["shiki", "vscode-oniguruma", "@opentelemetry/sdk-node"],
   images: {
     remotePatterns: [
       {
