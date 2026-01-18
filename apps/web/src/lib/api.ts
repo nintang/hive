@@ -99,6 +99,7 @@ export async function updateChatModel(chatId: string, model: string) {
 /**
  * Gets or creates a guest user ID.
  * With Clerk, this returns a local guest ID for non-authenticated users.
+ * Always ensures the guest user exists in the database.
  */
 export const getOrCreateGuestUserId = async (
   user: UserProfile | null
@@ -107,20 +108,28 @@ export const getOrCreateGuestUserId = async (
 
   // Check if we already have a guest ID in localStorage
   const existingGuestId = localStorage.getItem("guestUserId")
-  if (existingGuestId) {
-    return existingGuestId
-  }
-
-  // Create a new guest ID
-  const guestId = crypto.randomUUID()
+  const guestId = existingGuestId || crypto.randomUUID()
 
   try {
-    // Create the guest user in the database
+    // Always call createGuestUser to ensure the user exists in the database
+    // The endpoint handles the case where the user already exists
     await createGuestUser(guestId)
     localStorage.setItem("guestUserId", guestId)
     return guestId
   } catch (error) {
     console.error("Error creating guest user:", error)
+    // If we failed with an existing ID, try creating a fresh one
+    if (existingGuestId) {
+      localStorage.removeItem("guestUserId")
+      const newGuestId = crypto.randomUUID()
+      try {
+        await createGuestUser(newGuestId)
+        localStorage.setItem("guestUserId", newGuestId)
+        return newGuestId
+      } catch {
+        return null
+      }
+    }
     return null
   }
 }
