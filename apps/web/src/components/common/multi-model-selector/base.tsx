@@ -314,7 +314,7 @@ export function MultiModelSelector({
                 size="sm"
                 variant="secondary"
                 className={cn(
-                  "border-border dark:bg-secondary text-accent-foreground h-9 w-auto border bg-transparent",
+                  "border-border dark:bg-secondary text-accent-foreground h-9 w-auto rounded-full border bg-transparent",
                   className
                 )}
                 type="button"
@@ -329,6 +329,11 @@ export function MultiModelSelector({
         <PopoverContentAuth />
       </Popover>
     )
+  }
+
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return trigger
   }
 
   if (isMobile) {
