@@ -21,6 +21,7 @@ import {
 import { Pin } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useMemo } from "react"
+import { ConnectionsTrigger } from "../../connections"
 import { HistoryTrigger } from "../../history/history-trigger"
 import { SidebarList } from "./sidebar-list"
 import { SidebarProject } from "./sidebar-project"
@@ -85,6 +86,19 @@ export function AppSidebar() {
                   <span>Search</span>
                   <div className="text-muted-foreground ml-auto text-xs opacity-0 duration-150 group-hover/search:opacity-100">
                     ⌘+K
+                  </div>
+                </div>
+              }
+              hasPopover={false}
+            />
+            <ConnectionsTrigger
+              hasSidebar={false}
+              classNameTrigger="bg-transparent hover:bg-accent/80 hover:text-foreground text-primary relative inline-flex w-full items-center rounded-md px-2 py-2 text-sm transition-colors group/connections"
+              label={
+                <div className="flex w-full items-center gap-2">
+                  <span>Connections</span>
+                  <div className="text-muted-foreground ml-auto text-xs opacity-0 duration-150 group-hover/connections:opacity-100">
+                    ⌘+J
                   </div>
                 </div>
               }

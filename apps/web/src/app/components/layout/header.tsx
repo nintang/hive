@@ -1,5 +1,6 @@
 "use client"
 
+import { ConnectionsTrigger } from "@/app/components/connections"
 import { HistoryTrigger } from "@/app/components/history/history-trigger"
 import { AppInfoTrigger } from "@/app/components/layout/app-info/app-info-trigger"
 import { ButtonNewChat } from "@/app/components/layout/button-new-chat"
@@ -65,6 +66,7 @@ export function Header({ hasSidebar }: { hasSidebar: boolean }) {
             <div className="pointer-events-auto flex flex-1 items-center justify-end gap-2">
               {!isMultiModelEnabled && <DialogPublish />}
               <ButtonNewChat />
+              {!hasSidebar && <ConnectionsTrigger hasSidebar={hasSidebar} />}
               {!hasSidebar && <HistoryTrigger hasSidebar={hasSidebar} />}
               <UserMenu />
             </div>
