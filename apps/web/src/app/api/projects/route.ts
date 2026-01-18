@@ -11,7 +11,7 @@ import { SKILLS } from "@/lib/skills"
 
 export async function POST(request: Request) {
   try {
-    const { name, skillIds = [] } = await request.json()
+    const { name, skillIds = [], connectionIds = [] } = await request.json()
 
     // If D1 is not available, use mock store
     if (!isD1Enabled()) {
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
         id: projectId,
         name,
         userId,
+        lastConnectionIds: connectionIds.length > 0 ? JSON.stringify(connectionIds) : null,
         createdAt: now,
       })
       .run()
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       id: data.id,
       name: data.name,
       user_id: data.userId,
+      last_connection_ids: data.lastConnectionIds ? JSON.parse(data.lastConnectionIds) : [],
       created_at: data.createdAt,
       skill_ids: skillIds,
     })
@@ -121,6 +123,8 @@ export async function GET() {
       id: p.id,
       name: p.name,
       user_id: p.userId,
+      last_model_id: p.lastModelId,
+      last_connection_ids: p.lastConnectionIds ? JSON.parse(p.lastConnectionIds) : [],
       created_at: p.createdAt,
     }))
   )

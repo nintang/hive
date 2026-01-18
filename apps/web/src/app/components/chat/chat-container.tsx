@@ -2,9 +2,10 @@
 
 import { MultiChat } from "@/app/components/multi-chat/multi-chat"
 import { useUserPreferences } from "@/lib/user-preference-store/provider"
+import { Suspense } from "react"
 import { Chat } from "./chat"
 
-export function ChatContainer() {
+function ChatContent() {
   const { preferences } = useUserPreferences()
   const multiModelEnabled = preferences.multiModelEnabled
 
@@ -13,4 +14,12 @@ export function ChatContainer() {
   }
 
   return <Chat />
+}
+
+export function ChatContainer() {
+  return (
+    <Suspense fallback={null}>
+      <ChatContent />
+    </Suspense>
+  )
 }

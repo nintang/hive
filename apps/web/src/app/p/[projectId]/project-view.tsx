@@ -198,7 +198,11 @@ export function ProjectView({ projectId }: ProjectViewProps) {
           // Navigate to the chat page with prompt param - let the chat page send the message
           // This ensures the chat page's useChat instance handles the streaming
           const encodedPrompt = encodeURIComponent(input)
-          router.push(`/c/${newChat.id}?prompt=${encodedPrompt}&autosubmit=true`)
+          // Pass connection IDs so the chat page knows which tools to use
+          const connectionIdsParam = selectedConnectionIds.length > 0
+            ? `&connectionIds=${encodeURIComponent(JSON.stringify(selectedConnectionIds))}`
+            : ""
+          router.push(`/c/${newChat.id}?prompt=${encodedPrompt}&autosubmit=true${connectionIdsParam}`)
           return newChat.id
         } catch (err: unknown) {
           let errorMessage = "Something went wrong."
@@ -275,6 +279,8 @@ export function ProjectView({ projectId }: ProjectViewProps) {
       // Create the chat and navigate - the chat page will handle sending the message
       // ensureChatExists will navigate to /c/[chatId]?prompt=...&autosubmit=true
       await ensureChatExists(user.id)
+      // Clear input after successful submission
+      setInput("")
     } catch {
       toast({ title: "Failed to create chat", status: "error" })
     } finally {

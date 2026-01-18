@@ -24,7 +24,7 @@ export const FREE_MODELS_IDS = [
   "gpt-4.1-nano",
 ]
 
-export const MODEL_DEFAULT = "gpt-4.1-nano"
+export const MODEL_DEFAULT = "openrouter:anthropic/claude-haiku-4.5"
 
 export const APP_NAME = "Hive"
 export const APP_DOMAIN = "https://hive.chat"

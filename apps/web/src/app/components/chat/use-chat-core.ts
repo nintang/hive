@@ -110,9 +110,22 @@ export function useChatCore({
 
   // Search params handling
   const searchParams = useSearchParams()
-  const prompt = searchParams.get("prompt")
-  const autosubmit = searchParams.get("autosubmit") === "true"
+  const prompt = searchParams?.get("prompt") ?? null
+  const autosubmit = searchParams?.get("autosubmit") === "true"
+  const connectionIdsParam = searchParams?.get("connectionIds") ?? null
   const hasAutoSubmittedRef = useRef(false)
+
+  // Parse connection IDs from URL param (used when coming from project page)
+  const urlConnectionIds = useMemo(() => {
+    if (connectionIdsParam) {
+      try {
+        return JSON.parse(connectionIdsParam) as string[]
+      } catch {
+        return null
+      }
+    }
+    return null
+  }, [connectionIdsParam])
 
   // Chats operations
   const { updateTitle } = useChats()
@@ -199,11 +212,12 @@ export function useChatCore({
   >
 
   // Handle search params on mount - set input from prompt param
+  // Don't set input if autosubmit is true (message is sent directly, not shown in input)
   useEffect(() => {
-    if (prompt && typeof window !== "undefined") {
+    if (prompt && !autosubmit && typeof window !== "undefined") {
       requestAnimationFrame(() => setInput(prompt))
     }
-  }, [prompt])
+  }, [prompt, autosubmit])
 
   // Auto-submit when coming from project page with autosubmit=true
   useEffect(() => {
@@ -222,10 +236,13 @@ export function useChatCore({
         const url = new URL(window.location.href)
         url.searchParams.delete("prompt")
         url.searchParams.delete("autosubmit")
+        url.searchParams.delete("connectionIds")
         window.history.replaceState({}, "", url.toString())
       }
 
       // Send the message directly
+      // Use URL connection IDs if provided (from project page), otherwise fall back to selected ones
+      const effectiveConnectionIds = urlConnectionIds || selectedConnectionIds
       sendMessage(
         { text: prompt },
         {
@@ -236,11 +253,13 @@ export function useChatCore({
             isAuthenticated,
             systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
             enableSearch: false,
-            selectedConnectionIds,
+            selectedConnectionIds: effectiveConnectionIds,
             projectId,
           },
         }
       )
+      // Clear input after auto-submit so it doesn't remain in the text box
+      setInput("")
       setHasSentFirstMessage(true)
     }
   }, [
@@ -255,6 +274,7 @@ export function useChatCore({
     isAuthenticated,
     systemPrompt,
     selectedConnectionIds,
+    urlConnectionIds,
     projectId,
   ])
 

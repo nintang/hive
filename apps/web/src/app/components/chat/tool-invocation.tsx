@@ -111,6 +111,11 @@ type ToolState =
   | "call"
   | "result"
 
+// Format tool name for display (strip COMPOSIO_ prefix)
+function formatToolName(toolName: string): string {
+  return toolName.replace(/^COMPOSIO_/, "")
+}
+
 // Normalize state to modern format
 function normalizeState(state: string): ToolState {
   switch (state) {
@@ -561,7 +566,7 @@ function SingleToolCard({
       >
         <div className="flex flex-1 flex-row items-center gap-2 text-left text-base">
           <Wrench className="text-muted-foreground size-4" />
-          <span className="font-mono text-sm">{toolName}</span>
+          <span className="font-mono text-sm">{formatToolName(toolName)}</span>
           <AnimatePresence mode="popLayout" initial={false}>
             <ToolStatusBadge state={normalizedState} />
           </AnimatePresence>

@@ -122,13 +122,13 @@ export function DialogCreateProject({
   }, [allSkills, selectedSkillIds])
 
   const createProjectMutation = useMutation({
-    mutationFn: async ({ name, skillIds }: { name: string; skillIds: string[] }): Promise<CreateProjectData> => {
+    mutationFn: async ({ name, skillIds, connectionIds }: { name: string; skillIds: string[]; connectionIds: string[] }): Promise<CreateProjectData> => {
       const response = await fetchClient("/api/projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, skillIds }),
+        body: JSON.stringify({ name, skillIds, connectionIds }),
       })
 
       if (!response.ok) {
@@ -139,12 +139,6 @@ export function DialogCreateProject({
       return response.json()
     },
     onSuccess: (data) => {
-      // Store selected connections in localStorage for now (no DB integration)
-      if (selectedConnectionIds.length > 0) {
-        const projectConnectionsKey = `hivechat:project-connections:${data.id}`
-        localStorage.setItem(projectConnectionsKey, JSON.stringify(selectedConnectionIds))
-      }
-
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       router.push(`/p/${data.id}`)
       resetForm()
@@ -175,7 +169,11 @@ export function DialogCreateProject({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (projectName.trim()) {
-      createProjectMutation.mutate({ name: projectName.trim(), skillIds: selectedSkillIds })
+      createProjectMutation.mutate({
+        name: projectName.trim(),
+        skillIds: selectedSkillIds,
+        connectionIds: selectedConnectionIds,
+      })
     }
   }
 
