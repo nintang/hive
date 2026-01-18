@@ -19,3 +19,7 @@ export { createSandbox, executeInSandbox, downloadSandboxFile } from "./e2b"
 
 // File handling
 export { uploadFileToS3, getSignedDownloadUrl } from "./files"
+
+// Hooks
+export { useSkills } from "./use-skills"
+export { useProjectSkills } from "./use-project-skills"

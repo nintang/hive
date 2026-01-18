@@ -22,6 +22,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useMemo } from "react"
 import { ConnectionsTrigger } from "../../connections"
 import { HistoryTrigger } from "../../history/history-trigger"
+import { SkillsPageTrigger } from "../../skills"
 import { SidebarList } from "./sidebar-list"
 import { SidebarProject } from "./sidebar-project"
 
@@ -98,6 +99,19 @@ export function AppSidebar() {
                   <span>Connections</span>
                   <div className="text-muted-foreground ml-auto text-xs opacity-0 duration-150 group-hover/connections:opacity-100">
                     ⌘+J
+                  </div>
+                </div>
+              }
+              hasPopover={false}
+            />
+            <SkillsPageTrigger
+              hasSidebar={false}
+              classNameTrigger="bg-transparent hover:bg-accent/80 hover:text-foreground text-primary relative inline-flex w-full items-center rounded-md px-2 py-2 text-sm transition-colors group/skills"
+              label={
+                <div className="flex w-full items-center gap-2">
+                  <span>Skills</span>
+                  <div className="text-muted-foreground ml-auto text-xs opacity-0 duration-150 group-hover/skills:opacity-100">
+                    ⌘⇧K
                   </div>
                 </div>
               }

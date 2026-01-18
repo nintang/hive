@@ -23,6 +23,9 @@ export async function GET(request: Request) {
         icon: skill.icon,
         description: skill.description,
         category: skill.category,
+        template: skill.template,
+        packages: skill.packages,
+        source: skill.source,
       })),
     })
   } catch (error) {

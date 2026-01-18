@@ -1,3 +1,8 @@
 export { SkillCard } from "./skill-card"
 export { SkillsBrowser } from "./skills-browser"
 export { SkillsTrigger } from "./skills-trigger"
+export { CommandSkills } from "./command-skills"
+export { DrawerSkills } from "./drawer-skills"
+export { SkillPreviewPanel } from "./skill-preview-panel"
+export { SkillsPageTrigger } from "./skills-page-trigger"
+export { SkillsFooter } from "./skills-footer"
