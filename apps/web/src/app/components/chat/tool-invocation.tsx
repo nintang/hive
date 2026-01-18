@@ -1,7 +1,6 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { ToolInvocationUIPart } from "@ai-sdk/ui-utils"
 import {
   CaretDown,
   CheckCircle,
@@ -9,13 +8,81 @@ import {
   Link,
   Nut,
   Spinner,
+  Warning,
   Wrench,
+  CircleNotch,
 } from "@phosphor-icons/react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMemo, useState } from "react"
 
+// Normalized tool data structure that works with both legacy and v6 formats
+interface NormalizedToolData {
+  toolCallId: string
+  toolName: string
+  state: string
+  args?: Record<string, unknown>
+  result?: unknown
+  errorText?: string
+}
+
+// AI SDK v6 typed tool part format
+interface V6ToolPart {
+  type: string // "tool-{toolName}"
+  toolCallId: string
+  state: string
+  input?: Record<string, unknown>
+  output?: unknown
+  error?: string
+}
+
+// Legacy tool-invocation format
+interface LegacyToolPart {
+  type: "tool-invocation"
+  toolInvocation: {
+    toolCallId: string
+    toolName: string
+    state: string
+    args?: Record<string, unknown>
+    result?: unknown
+    errorText?: string
+  }
+}
+
+type ToolPartInput = V6ToolPart | LegacyToolPart | { type: string; [key: string]: unknown }
+
+// Normalize any tool part format to our standard structure
+function normalizeToolPart(part: ToolPartInput): NormalizedToolData | null {
+  // Legacy format: { type: "tool-invocation", toolInvocation: { ... } }
+  if (part.type === "tool-invocation" && "toolInvocation" in part) {
+    const legacy = part as LegacyToolPart
+    return {
+      toolCallId: legacy.toolInvocation.toolCallId,
+      toolName: legacy.toolInvocation.toolName,
+      state: legacy.toolInvocation.state,
+      args: legacy.toolInvocation.args,
+      result: legacy.toolInvocation.result,
+      errorText: legacy.toolInvocation.errorText,
+    }
+  }
+
+  // AI SDK v6 format: { type: "tool-{toolName}", toolCallId, state, input, output }
+  if (part.type.startsWith("tool-") && part.type !== "tool-result" && part.type !== "tool-invocation") {
+    const v6 = part as V6ToolPart
+    return {
+      toolCallId: v6.toolCallId || (part as { toolCallId?: string }).toolCallId || "",
+      toolName: part.type.replace(/^tool-/, ""),
+      state: v6.state || (part as { state?: string }).state || "input-available",
+      args: v6.input || (part as { input?: Record<string, unknown> }).input,
+      result: v6.output || (part as { output?: unknown }).output,
+      errorText: v6.error || (part as { error?: string }).error,
+    }
+  }
+
+  return null
+}
+
 interface ToolInvocationProps {
-  toolInvocations: ToolInvocationUIPart[]
+  toolInvocations: ToolPartInput[]
   className?: string
   defaultOpen?: boolean
 }
@@ -24,6 +91,38 @@ const TRANSITION = {
   type: "spring" as const,
   duration: 0.2,
   bounce: 0,
+}
+
+// AI SDK v6 tool states (modern)
+// - "input-streaming": Arguments being streamed in
+// - "input-available": Arguments ready, tool executing
+// - "output-available": Tool completed with result
+// - "output-error": Tool failed with error
+// Legacy states (for backwards compatibility)
+// - "partial-call": Same as input-streaming
+// - "call": Same as input-available
+// - "result": Same as output-available
+type ToolState =
+  | "input-streaming"
+  | "input-available"
+  | "output-available"
+  | "output-error"
+  | "partial-call"
+  | "call"
+  | "result"
+
+// Normalize state to modern format
+function normalizeState(state: string): ToolState {
+  switch (state) {
+    case "partial-call":
+      return "input-streaming"
+    case "call":
+      return "input-available"
+    case "result":
+      return "output-available"
+    default:
+      return state as ToolState
+  }
 }
 
 export function ToolInvocation({
@@ -36,17 +135,22 @@ export function ToolInvocation({
     ? toolInvocations
     : [toolInvocations]
 
+  // Normalize all tool parts and filter out invalid ones
+  const normalizedTools = toolInvocationsData
+    .map(normalizeToolPart)
+    .filter((t): t is NormalizedToolData => t !== null)
+
   // Group tool invocations by toolCallId
-  const groupedTools = toolInvocationsData.reduce(
+  const groupedTools = normalizedTools.reduce(
     (acc, item) => {
-      const { toolCallId } = item.toolInvocation
+      const { toolCallId } = item
       if (!acc[toolCallId]) {
         acc[toolCallId] = []
       }
       acc[toolCallId].push(item)
       return acc
     },
-    {} as Record<string, ToolInvocationUIPart[]>
+    {} as Record<string, NormalizedToolData[]>
   )
 
   const uniqueToolIds = Object.keys(groupedTools)
@@ -55,7 +159,7 @@ export function ToolInvocation({
   if (isSingleTool) {
     return (
       <SingleToolView
-        toolInvocations={toolInvocationsData}
+        toolInvocations={normalizedTools}
         defaultOpen={defaultOpen}
         className="mb-10"
       />
@@ -100,18 +204,16 @@ export function ToolInvocation({
               <div className="px-3 pt-3 pb-3">
                 <div className="space-y-2">
                   {uniqueToolIds.map((toolId) => {
-                    const toolInvocationsForId = groupedTools[toolId]
+                    const toolsForId = groupedTools[toolId]
 
-                    if (!toolInvocationsForId?.length) return null
+                    if (!toolsForId?.length) return null
 
                     return (
                       <div
                         key={toolId}
                         className="pb-2 last:border-0 last:pb-0"
                       >
-                        <SingleToolView
-                          toolInvocations={toolInvocationsForId}
-                        />
+                        <SingleToolView toolInvocations={toolsForId} />
                       </div>
                     )
                   })}
@@ -126,7 +228,7 @@ export function ToolInvocation({
 }
 
 type SingleToolViewProps = {
-  toolInvocations: ToolInvocationUIPart[]
+  toolInvocations: NormalizedToolData[]
   defaultOpen?: boolean
   className?: string
 }
@@ -139,33 +241,35 @@ function SingleToolView({
   // Group by toolCallId and pick the most informative state
   const groupedTools = toolInvocations.reduce(
     (acc, item) => {
-      const { toolCallId } = item.toolInvocation
+      const { toolCallId } = item
       if (!acc[toolCallId]) {
         acc[toolCallId] = []
       }
       acc[toolCallId].push(item)
       return acc
     },
-    {} as Record<string, ToolInvocationUIPart[]>
+    {} as Record<string, NormalizedToolData[]>
   )
 
-  // For each toolCallId, get the most informative state (result > call > requested)
+  // For each toolCallId, get the most informative state
+  // Priority: output-error > output-available > input-available > input-streaming
+  // Also handle legacy states: result > call > partial-call
   const toolsToDisplay = Object.values(groupedTools)
     .map((group) => {
-      const resultTool = group.find(
-        (item) => item.toolInvocation.state === "result"
-      )
-      const callTool = group.find(
-        (item) => item.toolInvocation.state === "call"
-      )
-      const partialCallTool = group.find(
-        (item) => item.toolInvocation.state === "partial-call"
-      )
+      // Modern states
+      const errorTool = group.find((item) => item.state === "output-error")
+      const outputTool = group.find((item) => item.state === "output-available")
+      const inputAvailableTool = group.find((item) => item.state === "input-available")
+      const inputStreamingTool = group.find((item) => item.state === "input-streaming")
+      // Legacy states
+      const resultTool = group.find((item) => item.state === "result")
+      const callTool = group.find((item) => item.state === "call")
+      const partialCallTool = group.find((item) => item.state === "partial-call")
 
-      // Return the most informative one
-      return resultTool || callTool || partialCallTool
+      // Return the most informative one (prioritize errors, then results)
+      return errorTool || outputTool || resultTool || inputAvailableTool || callTool || inputStreamingTool || partialCallTool
     })
-    .filter(Boolean) as ToolInvocationUIPart[]
+    .filter(Boolean) as NormalizedToolData[]
 
   if (toolsToDisplay.length === 0) return null
 
@@ -186,7 +290,7 @@ function SingleToolView({
       <div className="space-y-4">
         {toolsToDisplay.map((tool) => (
           <SingleToolCard
-            key={tool.toolInvocation.toolCallId}
+            key={tool.toolCallId}
             toolData={tool}
             defaultOpen={defaultOpen}
           />
@@ -196,22 +300,95 @@ function SingleToolView({
   )
 }
 
-// New component to handle individual tool cards
+// Status badge component for tool states
+function ToolStatusBadge({ state }: { state: ToolState }) {
+  const normalizedState = normalizeState(state)
+
+  switch (normalizedState) {
+    case "input-streaming":
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          transition={{ duration: 0.15 }}
+          key="streaming"
+        >
+          <div className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-xs text-purple-700 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400">
+            <CircleNotch className="mr-1 h-3 w-3 animate-spin" />
+            Preparing
+          </div>
+        </motion.div>
+      )
+    case "input-available":
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          transition={{ duration: 0.15 }}
+          key="running"
+        >
+          <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400">
+            <Spinner className="mr-1 h-3 w-3 animate-spin" />
+            Running
+          </div>
+        </motion.div>
+      )
+    case "output-available":
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          transition={{ duration: 0.15 }}
+          key="completed"
+        >
+          <div className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-1.5 py-0.5 text-xs text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400">
+            <CheckCircle className="mr-1 h-3 w-3" />
+            Completed
+          </div>
+        </motion.div>
+      )
+    case "output-error":
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
+          transition={{ duration: 0.15 }}
+          key="error"
+        >
+          <div className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+            <Warning className="mr-1 h-3 w-3" />
+            Error
+          </div>
+        </motion.div>
+      )
+    default:
+      return null
+  }
+}
+
+// Component to handle individual tool cards
 function SingleToolCard({
   toolData,
   defaultOpen = false,
   className,
 }: {
-  toolData: ToolInvocationUIPart
+  toolData: NormalizedToolData
   defaultOpen?: boolean
   className?: string
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen)
-  const { toolInvocation } = toolData
-  const { state, toolName, toolCallId, args } = toolInvocation
-  const isLoading = state === "call"
-  const isCompleted = state === "result"
-  const result = isCompleted ? toolInvocation.result : undefined
+  const { state, toolName, toolCallId, args, result, errorText } = toolData
+  const normalizedState = normalizeState(state)
+
+  // Determine loading/completed states (handle both modern and legacy)
+  const isStreaming = normalizedState === "input-streaming"
+  const isRunning = normalizedState === "input-available"
+  const isCompleted = normalizedState === "output-available"
+  const isError = normalizedState === "output-error"
 
   // Parse the result JSON if available
   const { parsedResult, parseError } = useMemo(() => {
@@ -226,8 +403,9 @@ function SingleToolCard({
         result !== null &&
         "content" in result
       ) {
-        const textContent = result.content?.find(
-          (item: { type: string }) => item.type === "text"
+        const resultWithContent = result as { content?: Array<{ type: string; text?: string }> }
+        const textContent = resultWithContent.content?.find(
+          (item) => item.type === "text"
         )
         if (!textContent?.text) return { parsedResult: null, parseError: null }
 
@@ -385,33 +563,7 @@ function SingleToolCard({
           <Wrench className="text-muted-foreground size-4" />
           <span className="font-mono text-sm">{toolName}</span>
           <AnimatePresence mode="popLayout" initial={false}>
-            {isLoading ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
-                animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
-                transition={{ duration: 0.15 }}
-                key="loading"
-              >
-                <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400">
-                  <Spinner className="mr-1 h-3 w-3 animate-spin" />
-                  Running
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
-                animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                exit={{ opacity: 0, scale: 0.9, filter: "blur(2px)" }}
-                transition={{ duration: 0.15 }}
-                key="completed"
-              >
-                <div className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-1.5 py-0.5 text-xs text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400">
-                  <CheckCircle className="mr-1 h-3 w-3" />
-                  Completed
-                </div>
-              </motion.div>
-            )}
+            <ToolStatusBadge state={normalizedState} />
           </AnimatePresence>
         </div>
         <CaretDown
@@ -456,6 +608,18 @@ function SingleToolCard({
                     ) : (
                       renderResults()
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error section */}
+              {isError && errorText && (
+                <div>
+                  <div className="text-muted-foreground mb-1 text-xs font-medium">
+                    Error
+                  </div>
+                  <div className="bg-red-50 dark:bg-red-950/20 max-h-60 overflow-auto rounded border border-red-200 dark:border-red-800 p-2 text-sm text-red-700 dark:text-red-400">
+                    {errorText}
                   </div>
                 </div>
               )}

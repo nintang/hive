@@ -17,6 +17,50 @@ import { SourcesList } from "./sources-list"
 import { ToolInvocation } from "./tool-invocation"
 import { useAssistantMessageSelection } from "./useAssistantMessageSelection"
 
+// Generic part type for type-safe access to properties that may vary between SDK versions
+type AnyPart = {
+  type: string
+  state?: string
+  output?: unknown
+  text?: string // V6 reasoning uses text
+  reasoning?: string // Legacy reasoning
+  toolInvocation?: {
+    state?: string
+    toolName?: string
+    result?: unknown
+  }
+}
+
+type ImageResult = {
+  title: string
+  imageUrl: string
+  sourceUrl: string
+}
+
+// AI SDK v6 uses typed tool parts with format "tool-{toolName}" instead of generic "tool-invocation"
+// This helper detects both formats for backwards compatibility
+function isToolPart(part: AnyPart): boolean {
+  return (
+    part.type === "tool-invocation" || // Legacy format
+    (part.type.startsWith("tool-") && part.type !== "tool-result") // AI SDK v6 format
+  )
+}
+
+// Extract tool name from part type (handles both formats)
+function getToolName(part: AnyPart): string {
+  if (part.type === "tool-invocation" && part.toolInvocation?.toolName) {
+    return part.toolInvocation.toolName
+  }
+  // AI SDK v6: type is "tool-{toolName}"
+  return part.type.replace(/^tool-/, "")
+}
+
+// Get reasoning text from part (handles both v6 and legacy formats)
+function getReasoningText(part: AnyPart): string | undefined {
+  // V6 uses 'text', legacy uses 'reasoning'
+  return part.text || part.reasoning
+}
+
 type MessageAssistantProps = {
   children: string
   isLast?: boolean
@@ -45,30 +89,34 @@ export function MessageAssistant({
   onQuote,
 }: MessageAssistantProps) {
   const { preferences } = useUserPreferences()
-  const sources = getSources(parts)
-  const toolInvocationParts = parts?.filter(
-    (part) => part.type === "tool-invocation"
-  )
-  const reasoningParts = parts?.find((part) => part.type === "reasoning")
+  const sources = getSources(parts ?? [])
+  // Filter for tool parts using helper that handles both legacy and v6 formats
+  const toolInvocationParts = (parts?.filter((p) => isToolPart(p as AnyPart)) ?? []) as AnyPart[]
+  const reasoningParts = parts?.find((part) => part.type === "reasoning") as AnyPart | undefined
+  const reasoningText = reasoningParts ? getReasoningText(reasoningParts) : undefined
   const contentNullOrEmpty = children === null || children === ""
   const isLastStreaming = status === "streaming" && isLast
-  const searchImageResults =
-    parts
-      ?.filter(
-        (part) =>
-          part.type === "tool-invocation" &&
-          part.toolInvocation?.state === "result" &&
-          part.toolInvocation?.toolName === "imageSearch" &&
-          part.toolInvocation?.result?.content?.[0]?.type === "images"
-      )
-      .flatMap((part) =>
-        part.type === "tool-invocation" &&
-        part.toolInvocation?.state === "result" &&
-        part.toolInvocation?.toolName === "imageSearch" &&
-        part.toolInvocation?.result?.content?.[0]?.type === "images"
-          ? (part.toolInvocation?.result?.content?.[0]?.results ?? [])
-          : []
-      ) ?? []
+  // Handle image search results - supports both legacy and v6 format
+  const searchImageResults: ImageResult[] =
+    (parts
+      ?.filter((part) => {
+        const anyPart = part as AnyPart
+        const toolName = getToolName(anyPart)
+        if (toolName !== "imageSearch") return false
+        // Check for completed state (v6: output-available, legacy: result)
+        const state = anyPart.state || anyPart.toolInvocation?.state
+        return state === "output-available" || state === "result"
+      })
+      .flatMap((part) => {
+        const anyPart = part as AnyPart
+        // Get result from v6 format (output) or legacy format (toolInvocation.result)
+        const result = anyPart.output || anyPart.toolInvocation?.result
+        const resultObj = result as { content?: Array<{ type: string; results?: ImageResult[] }> } | undefined
+        if (resultObj?.content?.[0]?.type === "images") {
+          return resultObj.content[0].results ?? []
+        }
+        return []
+      }) ?? []) as ImageResult[]
 
   const isQuoteEnabled = !preferences.multiModelEnabled
   const messageRef = useRef<HTMLDivElement>(null)
@@ -99,18 +147,16 @@ export function MessageAssistant({
         )}
         {...(isQuoteEnabled && { "data-message-id": messageId })}
       >
-        {reasoningParts && reasoningParts.reasoning && (
+        {reasoningText && (
           <Reasoning
-            reasoning={reasoningParts.reasoning}
+            reasoning={reasoningText}
             isStreaming={status === "streaming"}
           />
         )}
 
-        {toolInvocationParts &&
-          toolInvocationParts.length > 0 &&
-          preferences.showToolInvocations && (
-            <ToolInvocation toolInvocations={toolInvocationParts} />
-          )}
+        {toolInvocationParts.length > 0 && preferences.showToolInvocations && (
+          <ToolInvocation toolInvocations={toolInvocationParts} />
+        )}
 
         {searchImageResults.length > 0 && (
           <SearchImages results={searchImageResults} />
