@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils"
 import { Check, PencilSimple, TrashSimple, X } from "@phosphor-icons/react"
 import { Pin, PinOff } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChatPreviewPanel } from "./chat-preview-panel"
 import { CommandFooter } from "./command-footer"
 import { formatDate, groupChatsByDate } from "./utils"
@@ -352,13 +352,16 @@ export function CommandHistory({
   const { messages, isLoading, error, fetchPreview, clearPreview } =
     useChatPreview()
 
-  if (isOpen && !hasPrefetchedRef.current) {
-    const recentChats = chatHistory.slice(0, 10)
-    recentChats.forEach((chat) => {
-      router.prefetch(`/c/${chat.id}`)
-    })
-    hasPrefetchedRef.current = true
-  }
+  // Prefetch recent chats when dialog opens
+  useEffect(() => {
+    if (isOpen && !hasPrefetchedRef.current) {
+      const recentChats = chatHistory.slice(0, 10)
+      recentChats.forEach((chat) => {
+        router.prefetch(`/c/${chat.id}`)
+      })
+      hasPrefetchedRef.current = true
+    }
+  }, [isOpen, chatHistory, router])
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)

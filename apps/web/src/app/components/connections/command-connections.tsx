@@ -26,7 +26,7 @@ import type { Connection } from "@/lib/connections/types"
 import { cn } from "@/lib/utils"
 import { CircleNotch } from "@phosphor-icons/react"
 import Image from "next/image"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { ConnectionPreviewPanel } from "./connection-preview-panel"
 import { ConnectionsFooter } from "./connections-footer"
 
@@ -140,7 +140,6 @@ export function CommandConnections({
   const [hoveredConnection, setHoveredConnection] = useState<Connection | null>(
     null
   )
-  const [isPreviewPanelHovered, setIsPreviewPanelHovered] = useState(false)
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
@@ -149,7 +148,6 @@ export function CommandConnections({
     if (!open) {
       setSearchQuery("")
       setHoveredConnection(null)
-      setIsPreviewPanelHovered(false)
     }
   }
 
@@ -212,16 +210,9 @@ export function CommandConnections({
     setHoveredConnection(connection)
   }, [])
 
-  const handlePreviewHover = useCallback((isHovering: boolean) => {
-    setIsPreviewPanelHovered(isHovering)
+  const handlePreviewHover = useCallback(() => {
+    // No-op: kept for API compatibility with ConnectionPreviewPanel
   }, [])
-
-  // Set first connection as default when connections load
-  useEffect(() => {
-    if (connections.length > 0 && !hoveredConnection) {
-      setHoveredConnection(connections[0])
-    }
-  }, [connections, hoveredConnection])
 
   // The active preview is the hovered one, or the first connection as default
   const activePreviewConnection =
