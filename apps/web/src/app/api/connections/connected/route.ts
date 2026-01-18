@@ -1,8 +1,6 @@
 import { auth } from "@clerk/nextjs/server"
-import { getDb } from "@/lib/db"
-import { connectedAccounts } from "@/lib/db/schema"
+import { getComposioClient } from "@/lib/composio/client"
 import { NextResponse } from "next/server"
-import { eq } from "drizzle-orm"
 
 export async function GET() {
   try {
@@ -11,24 +9,28 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const db = getDb()
+    const composio = getComposioClient()
 
-    const accounts = await db
-      .select()
-      .from(connectedAccounts)
-      .where(eq(connectedAccounts.userId, userId))
-      .all()
+    // Fetch connected accounts directly from Composio (single source of truth)
+    const result = await composio.connectedAccounts.list({
+      userIds: [userId],
+    })
 
-    return NextResponse.json({
-      accounts: accounts.map((acc) => ({
+    // Map Composio response to our expected format
+    // The Composio SDK types are incomplete - toolkit has more properties at runtime
+    const accounts = result.items.map((acc) => {
+      const toolkit = acc.toolkit as { slug: string; name?: string; meta?: { logo?: string } }
+      return {
         id: acc.id,
-        toolkitSlug: acc.toolkitSlug,
-        toolkitName: acc.toolkitName,
-        toolkitLogo: acc.toolkitLogo,
+        toolkitSlug: toolkit.slug,
+        toolkitName: toolkit.name || toolkit.slug,
+        toolkitLogo: toolkit.meta?.logo || null,
         status: acc.status,
         createdAt: acc.createdAt,
-      })),
+      }
     })
+
+    return NextResponse.json({ accounts })
   } catch (error) {
     console.error("Error fetching connected accounts:", error)
     return NextResponse.json(

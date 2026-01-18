@@ -1,12 +1,9 @@
 import { auth } from "@clerk/nextjs/server"
-import { getDb } from "@/lib/db"
-import { connectedAccounts } from "@/lib/db/schema"
 import { getComposioClient } from "@/lib/composio/client"
 import { NextResponse } from "next/server"
-import { eq, and } from "drizzle-orm"
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
@@ -16,20 +13,17 @@ export async function DELETE(
     }
 
     const { slug } = await params
-    const db = getDb()
     const composio = getComposioClient()
 
-    // Find the connected account for this toolkit
-    const account = await db
-      .select()
-      .from(connectedAccounts)
-      .where(
-        and(
-          eq(connectedAccounts.toolkitSlug, slug),
-          eq(connectedAccounts.userId, userId)
-        )
-      )
-      .get()
+    // Find the connected account for this toolkit from Composio
+    const accounts = await composio.connectedAccounts.list({
+      userIds: [userId],
+      toolkitSlugs: [slug],
+    })
+
+    const account = accounts.items.find(
+      (acc) => acc.toolkit.slug === slug && acc.status === "ACTIVE"
+    )
 
     if (!account) {
       return NextResponse.json(
@@ -38,18 +32,8 @@ export async function DELETE(
       )
     }
 
-    // Delete from Composio
-    try {
-      await composio.connectedAccounts.delete(account.id)
-    } catch (e) {
-      console.warn("Failed to delete from Composio (may already be deleted):", e)
-    }
-
-    // Delete from our database
-    await db
-      .delete(connectedAccounts)
-      .where(eq(connectedAccounts.id, account.id))
-      .run()
+    // Delete from Composio (single source of truth)
+    await composio.connectedAccounts.delete(account.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

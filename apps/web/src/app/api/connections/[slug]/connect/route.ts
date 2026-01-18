@@ -1,11 +1,9 @@
 import { auth } from "@clerk/nextjs/server"
-import { getDb } from "@/lib/db"
-import { connectionRequests } from "@/lib/db/schema"
 import { getComposioClient, getAuthConfigForToolkit } from "@/lib/composio/client"
 import { NextResponse } from "next/server"
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
@@ -26,6 +24,7 @@ export async function POST(
 
     // Initiate connection with Composio using the link method for OAuth
     // Allow multiple connected accounts so users can reconnect
+    // Composio stores the connection - no need for local D1 storage
     const connectionRequest = await composio.connectedAccounts.initiate(
       userId,
       authConfigId,
@@ -34,21 +33,6 @@ export async function POST(
         allowMultiple: true,
       }
     )
-
-    // Store the connection request in our database for tracking
-    const db = getDb()
-    const now = new Date().toISOString()
-
-    await db
-      .insert(connectionRequests)
-      .values({
-        id: connectionRequest.id,
-        userId,
-        toolkitSlug,
-        status: "PENDING",
-        createdAt: now,
-      })
-      .run()
 
     return NextResponse.json({
       redirectUrl: connectionRequest.redirectUrl,
