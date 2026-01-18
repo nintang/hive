@@ -321,14 +321,27 @@ export async function POST(req: Request) {
       stopWhen: hasTools ? stepCountIs(10) : stepCountIs(1),
       experimental_telemetry: {
         isEnabled: true,
+        functionId: "chat-agent",
         metadata: {
+          // Session & user context
           sessionId: chatId,
           userId,
           model,
+          // Tool configuration
           hasTools: String(hasTools),
           toolCount: String(Object.keys(allTools).length),
+          toolNames: Object.keys(allTools).join(","),
+          // Skills configuration
           hasSkills: String(enabledSkillIds.length > 0),
           skillIds: enabledSkillIds.join(","),
+          // Composio integrations
+          hasComposio: String(activeToolkitSlugs.length > 0),
+          composioToolkits: activeToolkitSlugs.join(","),
+          // Agent graph metadata for Arize visualization
+          "graph.node.id": "chat-agent",
+          "graph.node.parent_id": projectId || "root",
+          // Additional context
+          projectId: projectId || "",
         },
       },
       onError: (err: unknown) => {

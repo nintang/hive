@@ -7,9 +7,13 @@
 
 import { z } from "zod"
 import { tool } from "ai"
+import { trace, SpanStatusCode } from "@opentelemetry/api"
 import type { ExecuteCodeResult } from "./types"
 import { createSandbox, executeInSandbox, downloadSandboxFile } from "./e2b"
 import { uploadFileToS3 } from "./files"
+
+// Get tracer for skills execution
+const tracer = trace.getTracer("skills-executor")
 
 /**
  * Create the execute_code tool for use with Vercel AI SDK streamText
@@ -45,68 +49,89 @@ IMPORTANT:
     }),
 
     execute: async ({ code, language }) => {
-      console.log(`[Skills] Executing ${language} code for user ${userId}, chat ${chatId}`)
-      console.log(`[Skills] Enabled skills: ${skillIds.join(", ")}`)
+      return tracer.startActiveSpan("execute_code", async (span) => {
+        // Set agent graph metadata for Arize visualization
+        span.setAttribute("graph.node.id", "code-executor")
+        span.setAttribute("graph.node.parent_id", "chat-agent")
+        span.setAttribute("session.id", chatId)
+        span.setAttribute("user.id", userId)
+        span.setAttribute("code.language", language)
+        span.setAttribute("skills.enabled", skillIds.join(","))
 
-      let sandbox = null
+        console.log(`[Skills] Executing ${language} code for user ${userId}, chat ${chatId}`)
+        console.log(`[Skills] Enabled skills: ${skillIds.join(", ")}`)
 
-      try {
-        // Create sandbox with appropriate template based on enabled skills
-        sandbox = await createSandbox({
-          skillIds,
-          timeout: 120_000, // 2 minute timeout for code execution
-        })
+        let sandbox = null
 
-        // Execute the code
-        const result = await executeInSandbox(sandbox, code, language)
+        try {
+          // Create sandbox with appropriate template based on enabled skills
+          sandbox = await createSandbox({
+            skillIds,
+            timeout: 120_000, // 2 minute timeout for code execution
+          })
 
-        // Upload any generated files to R2
-        if (result.success && result.files.length > 0) {
-          console.log(`[Skills] Uploading ${result.files.length} files to R2`)
+          // Execute the code
+          const result = await executeInSandbox(sandbox, code, language)
 
-          for (const file of result.files) {
-            const fileContent = await downloadSandboxFile(sandbox, file.path)
-            if (fileContent) {
-              const downloadUrl = await uploadFileToS3({
-                userId,
-                chatId,
-                fileName: file.name,
-                content: fileContent.content,
-                mimeType: file.mimeType,
-              })
+          // Upload any generated files to R2
+          if (result.success && result.files.length > 0) {
+            console.log(`[Skills] Uploading ${result.files.length} files to R2`)
+            span.setAttribute("files.count", result.files.length)
 
-              if (downloadUrl) {
-                file.downloadUrl = downloadUrl
+            for (const file of result.files) {
+              const fileContent = await downloadSandboxFile(sandbox, file.path)
+              if (fileContent) {
+                const downloadUrl = await uploadFileToS3({
+                  userId,
+                  chatId,
+                  fileName: file.name,
+                  content: fileContent.content,
+                  mimeType: file.mimeType,
+                })
+
+                if (downloadUrl) {
+                  file.downloadUrl = downloadUrl
+                }
               }
             }
           }
-        }
 
-        // Close the sandbox
-        await sandbox.kill()
+          // Close the sandbox
+          await sandbox.kill()
 
-        // Format the result for the LLM
-        return formatResultForLLM(result)
-      } catch (error) {
-        // Ensure sandbox is closed on error
-        if (sandbox) {
-          try {
-            await sandbox.kill()
-          } catch {
-            // Ignore close errors
+          span.setAttribute("execution.success", true)
+          span.setAttribute("execution.time_ms", result.executionTimeMs)
+          span.setStatus({ code: SpanStatusCode.OK })
+          span.end()
+
+          // Format the result for the LLM
+          return formatResultForLLM(result)
+        } catch (error) {
+          // Ensure sandbox is closed on error
+          if (sandbox) {
+            try {
+              await sandbox.kill()
+            } catch {
+              // Ignore close errors
+            }
+          }
+
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error(`[Skills] Execution failed:`, errorMessage)
+
+          span.setAttribute("execution.success", false)
+          span.setAttribute("error.message", errorMessage)
+          span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage })
+          span.end()
+
+          return {
+            success: false,
+            output: "",
+            error: errorMessage,
+            files: [],
           }
         }
-
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error(`[Skills] Execution failed:`, errorMessage)
-
-        return {
-          success: false,
-          output: "",
-          error: errorMessage,
-          files: [],
-        }
-      }
+      })
     },
   })
 }
