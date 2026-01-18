@@ -42,7 +42,7 @@ export function SidebarItemMenu({
     <>
       <DropdownMenu
         // shadcn/ui / radix pointer-events-none issue
-        modal={isMobile ? true : false}
+        modal={isMobile === true}
         onOpenChange={onMenuOpenChange}
       >
         <DropdownMenuTrigger asChild>
