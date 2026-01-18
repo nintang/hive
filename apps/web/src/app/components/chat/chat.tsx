@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "motion/react"
 import dynamic from "next/dynamic"
 import { redirect } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
+import type { ToolMode } from "@/app/components/chat-input/button-tool-mode"
 import { useConnectionSelection } from "./use-connection-selection"
 import { useChatCore } from "./use-chat-core"
 import { useChatOperations } from "./use-chat-operations"
@@ -47,7 +48,12 @@ export function Chat() {
 
   const { messages: initialMessages, cacheAndAddMessage } = useMessages()
   const { user } = useUser()
-  const { preferences } = useUserPreferences()
+  const {
+    preferences,
+    setLastModelId,
+    setLastConnectionIds,
+    setToolMode: persistToolMode,
+  } = useUserPreferences()
   const { draftValue, clearDraft } = useChatDraft(chatId)
 
   // File upload functionality
@@ -61,21 +67,40 @@ export function Chat() {
     handleFileRemove,
   } = useFileUpload()
 
-  // Model selection
+  // Model selection - uses lastModelId from preferences as fallback
   const { selectedModel, handleModelChange } = useModel({
     currentChat: currentChat || null,
     user,
     updateChatModel,
     chatId,
+    lastModelId: preferences.lastModelId,
+    setLastModelId,
   })
 
-  // Connection selection
+  // Connection selection - uses lastConnectionIds from preferences as initial value
   const {
     selectedConnectionId,
     setSelectedConnectionId,
     selectedConnectionIds,
     setSelectedConnectionIds,
-  } = useConnectionSelection()
+  } = useConnectionSelection({
+    initialConnectionIds: preferences.lastConnectionIds,
+    onConnectionIdsChange: setLastConnectionIds,
+  })
+
+  // Tool mode - single tool or multi-tool selection, initialized from preferences
+  const [toolMode, setToolModeState] = useState<ToolMode>(
+    preferences.toolMode as ToolMode
+  )
+
+  // Wrapper to also persist tool mode changes to preferences
+  const setToolMode = useCallback(
+    (mode: ToolMode) => {
+      setToolModeState(mode)
+      persistToolMode(mode)
+    },
+    [persistToolMode]
+  )
 
   // State to pass between hooks
   const [hasDialogAuth, setHasDialogAuth] = useState(false)
@@ -142,6 +167,7 @@ export function Chat() {
     selectedModel,
     clearDraft,
     bumpChat,
+    selectedConnectionIds,
   })
 
   // Memoize the conversation props to prevent unnecessary rerenders
@@ -192,6 +218,10 @@ export function Chat() {
       onSelectConnection: setSelectedConnectionId,
       selectedConnectionIds,
       onSelectConnections: setSelectedConnectionIds,
+      // Tool mode props
+      toolMode,
+      onToolModeChange: setToolMode,
+      multiSelectConnections: toolMode === "multi",
     }),
     [
       input,
@@ -217,6 +247,8 @@ export function Chat() {
       setSelectedConnectionId,
       selectedConnectionIds,
       setSelectedConnectionIds,
+      toolMode,
+      setToolMode,
     ]
   )
 
