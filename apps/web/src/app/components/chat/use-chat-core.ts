@@ -75,8 +75,6 @@ export function useChatCore({
 
   // Handle errors directly in onError callback
   const handleError = useCallback((error: Error) => {
-    console.error("Chat error:", error)
-    console.error("Error message:", error.message)
     let errorMsg = error.message || "Something went wrong."
 
     if (errorMsg === "An error occurred" || errorMsg === "fetch failed") {
@@ -117,8 +115,8 @@ export function useChatCore({
 
         if (!effectiveChatId) return
         await syncRecentMessages(effectiveChatId, setMessages, 2)
-      } catch (error) {
-        console.error("Message ID reconciliation failed: ", error)
+      } catch {
+        // Message ID reconciliation failed silently
       }
     },
     onError: handleError,
@@ -221,9 +219,20 @@ export function useChatCore({
         experimental_attachments: attachments || undefined,
       }
 
-      handleSubmit(undefined, options)
+      // Remove optimistic message before append adds the real one
       setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
       cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
+
+      // Use append instead of handleSubmit since we're calling programmatically
+      // handleSubmit reads from input state which was already cleared
+      append(
+        {
+          role: "user",
+          content: input,
+        },
+        options
+      )
+
       cacheAndAddMessage(optimisticMessage)
       clearDraft()
 
@@ -253,7 +262,7 @@ export function useChatCore({
     isAuthenticated,
     systemPrompt,
     enableSearch,
-    handleSubmit,
+    append,
     cacheAndAddMessage,
     clearDraft,
     messages.length,
