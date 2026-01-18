@@ -71,11 +71,15 @@ export function useChatOperations({
   }
 
   const ensureChatExists = async (userId: string, input: string) => {
-    if (chatId) return chatId
+    if (chatId) {
+      return chatId
+    }
 
     if (!isAuthenticated) {
       const storedGuestChatId = localStorage.getItem("guestChatId")
-      if (storedGuestChatId) return storedGuestChatId
+      if (storedGuestChatId) {
+        return storedGuestChatId
+      }
     }
 
     try {
@@ -87,7 +91,9 @@ export function useChatOperations({
         systemPrompt
       )
 
-      if (!newChat) return null
+      if (!newChat) {
+        return null
+      }
       if (isAuthenticated) {
         window.history.pushState(null, "", `/c/${newChat.id}`)
       } else {
