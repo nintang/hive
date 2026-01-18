@@ -1,6 +1,6 @@
 import { getDb, messages, isD1Enabled } from "@/lib/db"
 import { eq, asc, desc } from "drizzle-orm"
-import type { Message as MessageAISDK } from "ai"
+import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
 import { readFromIndexedDB, writeToIndexedDB } from "../persist"
 
 export interface ExtendedMessageAISDK extends MessageAISDK {
