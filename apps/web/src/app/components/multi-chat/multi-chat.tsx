@@ -12,7 +12,7 @@ import { useUser } from "@/lib/user-store/provider"
 import { cn } from "@/lib/utils"
 import { Message as MessageType } from "@ai-sdk/react"
 import { AnimatePresence, motion } from "motion/react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { MultiChatInput } from "./multi-chat-input"
 import { useMultiChat } from "./use-multi-chat"
 
@@ -38,6 +38,11 @@ export function MultiChat() {
   const [files, setFiles] = useState<File[]>([])
   const [multiChatId, setMultiChatId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const { user } = useUser()
   const { models } = useModel()
@@ -365,7 +370,8 @@ export function MultiChat() {
     ]
   )
 
-  const showOnboarding = messageGroups.length === 0 && !messagesLoading
+  // Defer showOnboarding calculation until after hydration to prevent mismatch
+  const showOnboarding = mounted && messageGroups.length === 0 && !messagesLoading
 
   return (
     <div
@@ -373,6 +379,7 @@ export function MultiChat() {
         "@container/main relative flex h-full flex-col items-center",
         showOnboarding ? "justify-end md:justify-center" : "justify-end"
       )}
+      suppressHydrationWarning
     >
       <AnimatePresence initial={false} mode="popLayout">
         {showOnboarding ? (
