@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils"
 import {
   CheckIcon,
   MagnifyingGlassIcon,
-  UsersIcon,
+  PlugsConnectedIcon,
 } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
@@ -44,7 +44,7 @@ export function DialogCreateProject({
   setIsOpen,
 }: DialogCreateProjectProps) {
   const [projectName, setProjectName] = useState("")
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -68,13 +68,13 @@ export function DialogCreateProject({
     )
   }, [connectedConnections, searchQuery])
 
-  // Get selected member objects
-  const selectedMembers = useMemo(() => {
-    return connectedConnections.filter((c) => selectedMemberIds.includes(c.id))
-  }, [connectedConnections, selectedMemberIds])
+  // Get selected connection objects
+  const selectedConnections = useMemo(() => {
+    return connectedConnections.filter((c) => selectedConnectionIds.includes(c.id))
+  }, [connectedConnections, selectedConnectionIds])
 
-  const handleMemberToggle = (connectionId: string) => {
-    setSelectedMemberIds((prev) =>
+  const handleConnectionToggle = (connectionId: string) => {
+    setSelectedConnectionIds((prev) =>
       prev.includes(connectionId)
         ? prev.filter((id) => id !== connectionId)
         : [...prev, connectionId]
@@ -99,10 +99,10 @@ export function DialogCreateProject({
       return response.json()
     },
     onSuccess: (data) => {
-      // Store selected members in localStorage for now (no DB integration)
-      if (selectedMemberIds.length > 0) {
-        const projectMembersKey = `hivechat:project-members:${data.id}`
-        localStorage.setItem(projectMembersKey, JSON.stringify(selectedMemberIds))
+      // Store selected connections in localStorage for now (no DB integration)
+      if (selectedConnectionIds.length > 0) {
+        const projectConnectionsKey = `hivechat:project-connections:${data.id}`
+        localStorage.setItem(projectConnectionsKey, JSON.stringify(selectedConnectionIds))
       }
 
       queryClient.invalidateQueries({ queryKey: ["projects"] })
@@ -120,7 +120,7 @@ export function DialogCreateProject({
 
   const resetForm = () => {
     setProjectName("")
-    setSelectedMemberIds([])
+    setSelectedConnectionIds([])
     setSearchQuery("")
   }
 
@@ -145,7 +145,7 @@ export function DialogCreateProject({
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>
-              Create a group chat with your connected tools.
+              Create a chat with your connected tools.
             </DialogDescription>
           </DialogHeader>
 
@@ -161,17 +161,17 @@ export function DialogCreateProject({
               />
             </div>
 
-            {/* Selected Members Preview */}
-            {selectedMembers.length > 0 && (
+            {/* Selected Connections Preview */}
+            {selectedConnections.length > 0 && (
               <div className="space-y-2">
                 <label className="text-muted-foreground text-sm">
-                  Members ({selectedMembers.length})
+                  Connections ({selectedConnections.length})
                 </label>
                 <div className="flex flex-wrap gap-2">
                   <AnimatePresence mode="popLayout">
-                    {selectedMembers.map((member) => (
+                    {selectedConnections.map((connection) => (
                       <motion.div
-                        key={member.id}
+                        key={connection.id}
                         layout
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -181,19 +181,19 @@ export function DialogCreateProject({
                       >
                         <div className="relative size-5 overflow-hidden rounded-full">
                           <Image
-                            src={member.logo}
-                            alt={member.name}
+                            src={connection.logo}
+                            alt={connection.name}
                             fill
                             className="object-contain"
                             unoptimized
                           />
                         </div>
                         <span className="text-xs font-medium">
-                          {member.name}
+                          {connection.name}
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleMemberToggle(member.id)}
+                          onClick={() => handleConnectionToggle(connection.id)}
                           className="hover:bg-accent-foreground/10 ml-0.5 rounded-full p-0.5"
                         >
                           <span className="text-muted-foreground text-xs">
@@ -207,9 +207,9 @@ export function DialogCreateProject({
               </div>
             )}
 
-            {/* Add Members Section */}
+            {/* Add Connections Section */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Add Members</label>
+              <label className="text-sm font-medium">Connections</label>
               <div className="border-input rounded-lg border">
                 {/* Search */}
                 <div className="relative border-b">
@@ -231,7 +231,7 @@ export function DialogCreateProject({
                       </div>
                     ) : filteredConnections.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <UsersIcon className="text-muted-foreground mb-2 size-8" />
+                        <PlugsConnectedIcon className="text-muted-foreground mb-2 size-8" />
                         <p className="text-muted-foreground text-sm">
                           {searchQuery
                             ? "No matching connections"
@@ -249,8 +249,8 @@ export function DialogCreateProject({
                           <ConnectionItem
                             key={conn.id}
                             connection={conn}
-                            isSelected={selectedMemberIds.includes(conn.id)}
-                            onToggle={() => handleMemberToggle(conn.id)}
+                            isSelected={selectedConnectionIds.includes(conn.id)}
+                            onToggle={() => handleConnectionToggle(conn.id)}
                           />
                         ))}
                       </div>
