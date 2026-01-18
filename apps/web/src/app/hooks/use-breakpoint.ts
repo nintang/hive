@@ -2,8 +2,8 @@ import * as React from "react"
 
 export function useBreakpoint(breakpoint: number) {
   const [isBelowBreakpoint, setIsBelowBreakpoint] = React.useState<
-    boolean | undefined
-  >(undefined)
+    boolean | null
+  >(null)
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`)
@@ -15,5 +15,5 @@ export function useBreakpoint(breakpoint: number) {
     return () => mql.removeEventListener("change", onChange)
   }, [breakpoint])
 
-  return !!isBelowBreakpoint
+  return isBelowBreakpoint
 }
