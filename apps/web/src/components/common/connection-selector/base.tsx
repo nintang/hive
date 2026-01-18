@@ -28,7 +28,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import type { Connection } from "@/lib/connections/types"
 import { useConnections } from "@/lib/connections/use-connections"
 import { cn } from "@/lib/utils"
 import {
@@ -40,7 +39,7 @@ import {
 } from "@phosphor-icons/react"
 import { AnimatePresence, motion } from "motion/react"
 import Image from "next/image"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { ConnectionSubMenu } from "./sub-menu"
 
 type ConnectionSelectorProps = {
@@ -71,13 +70,13 @@ export function ConnectionSelector({
     connections,
     isLoading,
     error,
-    toggleConnection,
+    initiateConnection,
+    disconnectConnection,
     hasMore,
     loadMore,
   } = useConnections()
   const isMobile = useBreakpoint(768)
 
-  const [isMounted, setIsMounted] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [isAddConnectionsOpen, setIsAddConnectionsOpen] = useState(false)
@@ -88,9 +87,11 @@ export function ConnectionSelector({
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Track mounted state to avoid hydration mismatch
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
 
   // Only show connected connections
   const connectedConnections = useMemo(() => {
@@ -334,8 +335,8 @@ export function ConnectionSelector({
   const addConnectionsModal = isMobile ? (
     <DrawerConnections
       connections={connections}
-      onConnect={toggleConnection}
-      onDisconnect={toggleConnection}
+      onConnect={initiateConnection}
+      onDisconnect={disconnectConnection}
       trigger={<span />}
       isOpen={isAddConnectionsOpen}
       setIsOpen={setIsAddConnectionsOpen}
@@ -347,8 +348,8 @@ export function ConnectionSelector({
   ) : (
     <CommandConnections
       connections={connections}
-      onConnect={toggleConnection}
-      onDisconnect={toggleConnection}
+      onConnect={initiateConnection}
+      onDisconnect={disconnectConnection}
       trigger={<span />}
       isOpen={isAddConnectionsOpen}
       setIsOpen={setIsAddConnectionsOpen}

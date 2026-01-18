@@ -2,33 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import type { Connection } from "./types"
-
-const CONNECTED_IDS_STORAGE_KEY = "hivechat:connected-connection-ids"
-
-function getStoredConnectedIds(): Set<string> {
-  if (typeof window === "undefined") return new Set()
-  try {
-    const stored = localStorage.getItem(CONNECTED_IDS_STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      if (Array.isArray(parsed)) {
-        return new Set(parsed)
-      }
-    }
-  } catch {
-    // Ignore parsing errors
-  }
-  return new Set()
-}
-
-function saveConnectedIds(ids: Set<string>): void {
-  if (typeof window === "undefined") return
-  try {
-    localStorage.setItem(CONNECTED_IDS_STORAGE_KEY, JSON.stringify([...ids]))
-  } catch {
-    // Ignore storage errors
-  }
-}
+import { useConnectedAccounts } from "./use-connected-accounts"
 
 interface UseConnectionsResult {
   connections: Connection[]
@@ -36,8 +10,10 @@ interface UseConnectionsResult {
   error: string | null
   hasMore: boolean
   loadMore: () => Promise<void>
-  toggleConnection: (connection: Connection) => void
+  initiateConnection: (connection: Connection) => Promise<void>
+  disconnectConnection: (connection: Connection) => Promise<void>
   refetch: () => Promise<void>
+  isConnecting: string | null
 }
 
 interface ConnectionsResponse {
@@ -50,15 +26,28 @@ interface ConnectionsResponse {
 
 export function useConnections(): UseConnectionsResult {
   const [connections, setConnections] = useState<Connection[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingConnections, setIsLoadingConnections] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
 
+  // Get real connected accounts from the database
+  const {
+    connectedAccounts,
+    isLoading: isLoadingAccounts,
+    initiateConnection: initiateOAuth,
+    disconnectAccount,
+    isConnecting,
+    refetch: refetchAccounts,
+  } = useConnectedAccounts()
+
+  // Create a set of connected toolkit slugs for quick lookup
+  const connectedSlugs = new Set(connectedAccounts.map((a) => a.toolkitSlug))
+
   const fetchConnections = useCallback(
     async (cursor?: string, append = false) => {
       try {
-        setIsLoading(true)
+        setIsLoadingConnections(true)
         setError(null)
 
         const params = new URLSearchParams({ limit: "100" })
@@ -73,24 +62,17 @@ export function useConnections(): UseConnectionsResult {
         }
 
         const data: ConnectionsResponse = await response.json()
-        const storedConnectedIds = getStoredConnectedIds()
-
-        // Apply stored connected status to fetched connections
-        const connectionsWithStoredStatus = data.connections.map((c) => ({
-          ...c,
-          connected: storedConnectedIds.has(c.id),
-        }))
 
         setConnections((prev) => {
           if (append) {
             // Merge and dedupe by id
             const existingIds = new Set(prev.map((c) => c.id))
-            const newConnections = connectionsWithStoredStatus.filter(
+            const newConnections = data.connections.filter(
               (c) => !existingIds.has(c.id)
             )
             return [...prev, ...newConnections]
           }
-          return connectionsWithStoredStatus
+          return data.connections
         })
 
         setNextCursor(data.nextCursor)
@@ -98,47 +80,61 @@ export function useConnections(): UseConnectionsResult {
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error")
       } finally {
-        setIsLoading(false)
+        setIsLoadingConnections(false)
       }
     },
     []
   )
 
   const loadMore = useCallback(async () => {
-    if (nextCursor && !isLoading) {
+    if (nextCursor && !isLoadingConnections) {
       await fetchConnections(nextCursor, true)
     }
-  }, [nextCursor, isLoading, fetchConnections])
+  }, [nextCursor, isLoadingConnections, fetchConnections])
 
-  const toggleConnection = useCallback((connection: Connection) => {
-    setConnections((prev) => {
-      const updated = prev.map((c) =>
-        c.id === connection.id ? { ...c, connected: !c.connected } : c
-      )
-      // Save the new connected IDs to localStorage
-      const connectedIds = new Set(
-        updated.filter((c) => c.connected).map((c) => c.id)
-      )
-      saveConnectedIds(connectedIds)
-      return updated
-    })
-  }, [])
+  // Initiate OAuth connection for a toolkit
+  const initiateConnection = useCallback(
+    async (connection: Connection) => {
+      const redirectUrl = await initiateOAuth(connection.slug)
+      if (redirectUrl) {
+        // Redirect to OAuth consent screen
+        window.location.href = redirectUrl
+      }
+    },
+    [initiateOAuth]
+  )
+
+  // Disconnect a connected account
+  const disconnectConnection = useCallback(
+    async (connection: Connection) => {
+      await disconnectAccount(connection.slug)
+    },
+    [disconnectAccount]
+  )
 
   const refetch = useCallback(async () => {
-    await fetchConnections()
-  }, [fetchConnections])
+    await Promise.all([fetchConnections(), refetchAccounts()])
+  }, [fetchConnections, refetchAccounts])
 
   useEffect(() => {
     fetchConnections()
   }, [fetchConnections])
 
+  // Merge connected status into connections
+  const connectionsWithStatus = connections.map((c) => ({
+    ...c,
+    connected: connectedSlugs.has(c.slug),
+  }))
+
   return {
-    connections,
-    isLoading,
+    connections: connectionsWithStatus,
+    isLoading: isLoadingConnections || isLoadingAccounts,
     error,
     hasMore,
     loadMore,
-    toggleConnection,
+    initiateConnection,
+    disconnectConnection,
     refetch,
+    isConnecting,
   }
 }

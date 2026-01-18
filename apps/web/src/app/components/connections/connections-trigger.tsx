@@ -25,11 +25,18 @@ export function ConnectionsTrigger({
 }: ConnectionsTriggerProps) {
   const isMobile = useBreakpoint(768)
   const [isOpen, setIsOpen] = useState(false)
-  const { connections, isLoading, error, toggleConnection, hasMore, loadMore } =
-    useConnections()
+  const {
+    connections,
+    isLoading,
+    error,
+    initiateConnection,
+    disconnectConnection,
+    hasMore,
+    loadMore,
+  } = useConnections()
 
-  const handleConnect = toggleConnection
-  const handleDisconnect = toggleConnection
+  const handleConnect = initiateConnection
+  const handleDisconnect = disconnectConnection
   const hasLabel = label != null && label !== ""
 
   const defaultTrigger = (
