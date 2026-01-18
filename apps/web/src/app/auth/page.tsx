@@ -1,11 +1,6 @@
-import { isSupabaseEnabled } from "@/lib/supabase/config"
-import { notFound } from "next/navigation"
-import LoginPage from "./login-page"
+import { redirect } from "next/navigation"
 
+// Redirect /auth to Clerk's sign-in page
 export default function AuthPage() {
-  if (!isSupabaseEnabled) {
-    return notFound()
-  }
-
-  return <LoginPage />
+  redirect("/sign-in")
 }

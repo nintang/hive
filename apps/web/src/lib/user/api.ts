@@ -1,25 +1,26 @@
-import { isSupabaseEnabled } from "@/lib/supabase/config"
-import { createClient } from "@/lib/supabase/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
+import { getDb, isD1Enabled, users, userPreferences } from "@/lib/db"
+import { eq } from "drizzle-orm"
 import {
   convertFromApiFormat,
   defaultPreferences,
 } from "@/lib/user-preference-store/utils"
 import type { UserProfile } from "./types"
 
-export async function getSupabaseUser() {
-  const supabase = await createClient()
-  if (!supabase) return { supabase: null, user: null }
+export async function getClerkUser() {
+  const { userId } = await auth()
+  if (!userId) return { userId: null, user: null }
 
-  const { data } = await supabase.auth.getUser()
+  const user = await currentUser()
   return {
-    supabase,
-    user: data.user ?? null,
+    userId,
+    user,
   }
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
-  if (!isSupabaseEnabled) {
-    // return fake user profile for no supabase
+  if (!isD1Enabled()) {
+    // return fake user profile when D1 is not enabled
     return {
       id: "guest",
       email: "guest@hive.chat",
@@ -30,27 +31,47 @@ export async function getUserProfile(): Promise<UserProfile | null> {
     } as UserProfile
   }
 
-  const { supabase, user } = await getSupabaseUser()
-  if (!supabase || !user) return null
+  const { userId, user } = await getClerkUser()
+  if (!userId || !user) return null
 
-  const { data: userProfileData } = await supabase
-    .from("users")
-    .select("*, user_preferences(*)")
-    .eq("id", user.id)
-    .single()
+  const db = getDb()
+
+  // Get user profile and preferences
+  const userProfileData = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
 
   // Don't load anonymous users in the user store
   if (userProfileData?.anonymous) return null
 
+  // Get user preferences if they exist
+  const preferencesData = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .get()
+
   // Format user preferences if they exist
-  const formattedPreferences = userProfileData?.user_preferences
-    ? convertFromApiFormat(userProfileData.user_preferences)
+  const formattedPreferences = preferencesData
+    ? convertFromApiFormat({
+        layout: preferencesData.layout,
+        prompt_suggestions: preferencesData.promptSuggestions,
+        show_tool_invocations: preferencesData.showToolInvocations,
+        show_conversation_previews: preferencesData.showConversationPreviews,
+        multi_model_enabled: preferencesData.multiModelEnabled,
+        hidden_models: preferencesData.hiddenModels as string[],
+      })
     : undefined
 
   return {
-    ...userProfileData,
-    profile_image: user.user_metadata?.avatar_url ?? "",
-    display_name: user.user_metadata?.name ?? "",
+    id: userId,
+    email: user.emailAddresses[0]?.emailAddress || "",
+    display_name: user.fullName || user.firstName || "",
+    profile_image: user.imageUrl || "",
+    anonymous: false,
+    favorite_models: userProfileData?.favoriteModels as string[],
     preferences: formattedPreferences,
   } as UserProfile
 }

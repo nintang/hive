@@ -16,7 +16,7 @@ import {
 } from "@/components/prompt-kit/message"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { isD1Enabled } from "@/lib/db"
 import { cn } from "@/lib/utils"
 import { Message as MessageType } from "@ai-sdk/react"
 import {
@@ -74,7 +74,7 @@ export function MessageUser({
     const UUIDLength = 36
 
     try {
-      if (isSupabaseEnabled && id && id.length !== UUIDLength) {
+      if (isD1Enabled() && id && id.length !== UUIDLength) {
         // Message IDs failed to sync
         toast({
           title: "Oops, something went wrong",

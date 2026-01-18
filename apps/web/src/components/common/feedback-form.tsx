@@ -2,8 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { createClient } from "@/lib/supabase/client"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { isD1Enabled } from "@/lib/db"
 import { CaretLeft, SealCheck, Spinner } from "@phosphor-icons/react"
 import { AnimatePresence, motion } from "motion/react"
 import { useState } from "react"
@@ -24,7 +23,7 @@ export function FeedbackForm({ authUserId, onClose }: FeedbackFormProps) {
   >("idle")
   const [feedback, setFeedback] = useState("")
 
-  if (!isSupabaseEnabled) {
+  if (!isD1Enabled()) {
     return null
   }
 
@@ -48,24 +47,19 @@ export function FeedbackForm({ authUserId, onClose }: FeedbackFormProps) {
     if (!feedback.trim()) return
 
     try {
-      const supabase = createClient()
-
-      if (!supabase) {
-        toast({
-          title: "Feedback is not supported in this deployment",
-          status: "info",
-        })
-        return
-      }
-
-      const { error } = await supabase.from("feedback").insert({
-        message: feedback,
-        user_id: authUserId,
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: feedback,
+          userId: authUserId,
+        }),
       })
 
-      if (error) {
+      if (!response.ok) {
+        const data = await response.json()
         toast({
-          title: `Error submitting feedback: ${error}`,
+          title: `Error submitting feedback: ${data.error}`,
           status: "error",
         })
         setStatus("error")

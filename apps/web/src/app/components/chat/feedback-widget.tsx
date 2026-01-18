@@ -7,7 +7,7 @@ import {
   MorphingPopoverContent,
   MorphingPopoverTrigger,
 } from "@/components/motion-primitives/morphing-popover"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { isD1Enabled } from "@/lib/db"
 import { QuestionMark } from "@phosphor-icons/react"
 import { motion } from "motion/react"
 import { useState } from "react"
@@ -26,7 +26,7 @@ export function FeedbackWidget({ authUserId }: FeedbackWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const isMobileOrTablet = useBreakpoint(896)
 
-  if (!isSupabaseEnabled) {
+  if (!isD1Enabled()) {
     return null
   }
 

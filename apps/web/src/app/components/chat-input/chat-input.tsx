@@ -1,5 +1,6 @@
 "use client"
 
+import { ConnectionSelector } from "@/components/common/connection-selector/base"
 import { ModelSelector } from "@/components/common/model-selector/base"
 import {
   PromptInput,
@@ -35,6 +36,13 @@ type ChatInputProps = {
   setEnableSearch: (enabled: boolean) => void
   enableSearch: boolean
   quotedText?: { text: string; messageId: string } | null
+  // Connection selector props
+  selectedConnectionId?: string
+  onSelectConnection?: (connectionId: string | undefined) => void
+  selectedConnectionIds?: string[]
+  onSelectConnections?: (connectionIds: string[]) => void
+  multiSelectConnections?: boolean
+  maxConnections?: number
 }
 
 export function ChatInput({
@@ -55,6 +63,12 @@ export function ChatInput({
   setEnableSearch,
   enableSearch,
   quotedText,
+  selectedConnectionId,
+  onSelectConnection,
+  selectedConnectionIds,
+  onSelectConnections,
+  multiSelectConnections = false,
+  maxConnections = 5,
 }: ChatInputProps) {
   const selectModelConfig = getModelInfo(selectedModel)
   const hasSearchSupport = Boolean(selectModelConfig?.webSearch)
@@ -196,6 +210,16 @@ export function ChatInput({
               <ModelSelector
                 selectedModelId={selectedModel}
                 setSelectedModelId={onSelectModel}
+                isUserAuthenticated={isUserAuthenticated}
+                className="rounded-full"
+              />
+              <ConnectionSelector
+                selectedConnectionId={selectedConnectionId}
+                setSelectedConnectionId={onSelectConnection}
+                selectedConnectionIds={selectedConnectionIds}
+                setSelectedConnectionIds={onSelectConnections}
+                multiSelect={multiSelectConnections}
+                maxConnections={maxConnections}
                 isUserAuthenticated={isUserAuthenticated}
                 className="rounded-full"
               />

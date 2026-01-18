@@ -26,8 +26,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useChatSession } from "@/lib/chat-store/session/provider"
 import { APP_DOMAIN } from "@/lib/config"
-import { createClient } from "@/lib/supabase/client"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { isD1Enabled } from "@/lib/db"
 import { Check, Copy, Globe, Spinner } from "@phosphor-icons/react"
 import type React from "react"
 import { useState } from "react"
@@ -39,7 +38,7 @@ export function DialogPublish() {
   const isMobile = useBreakpoint(768)
   const [copied, setCopied] = useState(false)
 
-  if (!isSupabaseEnabled) {
+  if (!isD1Enabled()) {
     return null
   }
 
@@ -65,26 +64,23 @@ export function DialogPublish() {
   const handlePublish = async () => {
     setIsLoading(true)
 
-    const supabase = createClient()
+    try {
+      // Update chat to public via API
+      const response = await fetch("/api/toggle-chat-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, public: true }),
+      })
 
-    if (!supabase) {
-      throw new Error("Supabase is not configured")
-    }
+      if (!response.ok) {
+        throw new Error("Failed to publish chat")
+      }
 
-    const { data, error } = await supabase
-      .from("chats")
-      .update({ public: true })
-      .eq("id", chatId)
-      .select()
-      .single()
-
-    if (error) {
-      console.error(error)
-    }
-
-    if (data) {
       setIsLoading(false)
       setOpenDialog(true)
+    } catch (error) {
+      console.error(error)
+      setIsLoading(false)
     }
   }
 

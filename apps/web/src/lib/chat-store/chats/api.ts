@@ -1,7 +1,7 @@
 import { readFromIndexedDB, writeToIndexedDB } from "@/lib/chat-store/persist"
 import type { Chat, Chats } from "@/lib/chat-store/types"
-import { createClient } from "@/lib/supabase/client"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { getDb, chats, isD1Enabled } from "@/lib/db"
+import { eq, desc } from "drizzle-orm"
 import { MODEL_DEFAULT } from "../../config"
 import { fetchClient } from "../../fetch"
 import {
@@ -10,56 +10,72 @@ import {
 } from "../../routes"
 
 export async function getChatsForUserInDb(userId: string): Promise<Chats[]> {
-  const supabase = createClient()
-  if (!supabase) return []
+  if (!isD1Enabled()) return []
 
-  const { data, error } = await supabase
-    .from("chats")
-    .select("*")
-    .eq("user_id", userId)
-    .order("pinned", { ascending: false })
-    .order("pinned_at", { ascending: false, nullsFirst: false })
-    .order("updated_at", { ascending: false })
+  const db = getDb()
+  const data = await db
+    .select()
+    .from(chats)
+    .where(eq(chats.userId, userId))
+    .orderBy(desc(chats.pinned), desc(chats.pinnedAt), desc(chats.updatedAt))
+    .all()
 
-  if (!data || error) {
-    console.error("Failed to fetch chats:", error)
-    return []
-  }
-
-  return data
+  // Map from Drizzle schema (camelCase) to expected format (snake_case)
+  return data.map((chat) => ({
+    id: chat.id,
+    user_id: chat.userId,
+    project_id: chat.projectId,
+    title: chat.title,
+    model: chat.model,
+    public: chat.public ?? false,
+    pinned: chat.pinned ?? false,
+    pinned_at: chat.pinnedAt,
+    created_at: chat.createdAt,
+    updated_at: chat.updatedAt,
+  }))
 }
 
 export async function updateChatTitleInDb(id: string, title: string) {
-  const supabase = createClient()
-  if (!supabase) return
+  if (!isD1Enabled()) return
 
-  const { error } = await supabase
-    .from("chats")
-    .update({ title, updated_at: new Date().toISOString() })
-    .eq("id", id)
-  if (error) throw error
+  const db = getDb()
+  await db
+    .update(chats)
+    .set({ title, updatedAt: new Date().toISOString() })
+    .where(eq(chats.id, id))
+    .run()
 }
 
 export async function deleteChatInDb(id: string) {
-  const supabase = createClient()
-  if (!supabase) return
+  if (!isD1Enabled()) return
 
-  const { error } = await supabase.from("chats").delete().eq("id", id)
-  if (error) throw error
+  const db = getDb()
+  await db.delete(chats).where(eq(chats.id, id)).run()
 }
 
 export async function getAllUserChatsInDb(userId: string): Promise<Chats[]> {
-  const supabase = createClient()
-  if (!supabase) return []
+  if (!isD1Enabled()) return []
 
-  const { data, error } = await supabase
-    .from("chats")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
+  const db = getDb()
+  const data = await db
+    .select()
+    .from(chats)
+    .where(eq(chats.userId, userId))
+    .orderBy(desc(chats.createdAt))
+    .all()
 
-  if (!data || error) return []
-  return data
+  return data.map((chat) => ({
+    id: chat.id,
+    user_id: chat.userId,
+    project_id: chat.projectId,
+    title: chat.title,
+    model: chat.model,
+    public: chat.public ?? false,
+    pinned: chat.pinned ?? false,
+    pinned_at: chat.pinnedAt,
+    created_at: chat.createdAt,
+    updated_at: chat.updatedAt,
+  }))
 }
 
 export async function createChatInDb(
@@ -68,21 +84,29 @@ export async function createChatInDb(
   model: string,
   systemPrompt: string
 ): Promise<string | null> {
-  const supabase = createClient()
-  if (!supabase) return null
+  if (!isD1Enabled()) return null
 
-  const { data, error } = await supabase
-    .from("chats")
-    .insert({ user_id: userId, title, model, system_prompt: systemPrompt })
-    .select("id")
-    .single()
+  const db = getDb()
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
 
-  if (error || !data?.id) return null
-  return data.id
+  await db
+    .insert(chats)
+    .values({
+      id,
+      userId,
+      title,
+      model,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  return id
 }
 
 export async function fetchAndCacheChats(userId: string): Promise<Chats[]> {
-  if (!isSupabaseEnabled) {
+  if (!isD1Enabled()) {
     return await getCachedChats()
   }
 

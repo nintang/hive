@@ -3,6 +3,33 @@
 import { useCallback, useEffect, useState } from "react"
 import type { Connection } from "./types"
 
+const CONNECTED_IDS_STORAGE_KEY = "hivechat:connected-connection-ids"
+
+function getStoredConnectedIds(): Set<string> {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const stored = localStorage.getItem(CONNECTED_IDS_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed)) {
+        return new Set(parsed)
+      }
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return new Set()
+}
+
+function saveConnectedIds(ids: Set<string>): void {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(CONNECTED_IDS_STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 interface UseConnectionsResult {
   connections: Connection[]
   isLoading: boolean
@@ -46,17 +73,24 @@ export function useConnections(): UseConnectionsResult {
         }
 
         const data: ConnectionsResponse = await response.json()
+        const storedConnectedIds = getStoredConnectedIds()
+
+        // Apply stored connected status to fetched connections
+        const connectionsWithStoredStatus = data.connections.map((c) => ({
+          ...c,
+          connected: storedConnectedIds.has(c.id),
+        }))
 
         setConnections((prev) => {
           if (append) {
             // Merge and dedupe by id
             const existingIds = new Set(prev.map((c) => c.id))
-            const newConnections = data.connections.filter(
+            const newConnections = connectionsWithStoredStatus.filter(
               (c) => !existingIds.has(c.id)
             )
             return [...prev, ...newConnections]
           }
-          return data.connections
+          return connectionsWithStoredStatus
         })
 
         setNextCursor(data.nextCursor)
@@ -77,11 +111,17 @@ export function useConnections(): UseConnectionsResult {
   }, [nextCursor, isLoading, fetchConnections])
 
   const toggleConnection = useCallback((connection: Connection) => {
-    setConnections((prev) =>
-      prev.map((c) =>
+    setConnections((prev) => {
+      const updated = prev.map((c) =>
         c.id === connection.id ? { ...c, connected: !c.connected } : c
       )
-    )
+      // Save the new connected IDs to localStorage
+      const connectedIds = new Set(
+        updated.filter((c) => c.connected).map((c) => c.id)
+      )
+      saveConnectedIds(connectedIds)
+      return updated
+    })
   }, [])
 
   const refetch = useCallback(async () => {

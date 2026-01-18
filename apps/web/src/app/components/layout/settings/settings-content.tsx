@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { DrawerClose } from "@/components/ui/drawer"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
+import { isD1Enabled } from "@/lib/db"
 import { cn, isDev } from "@/lib/utils"
 import {
   CubeIcon,
@@ -108,7 +108,7 @@ export function SettingsContent({
             {/* Mobile tabs content */}
             <TabsContent value="general" className="space-y-6 px-6">
               <UserProfile />
-              {isSupabaseEnabled && (
+              {isD1Enabled() && (
                 <>
                   <AccountManagement />
                 </>
@@ -195,7 +195,7 @@ export function SettingsContent({
             <div className="flex-1 overflow-auto px-6 pt-4">
               <TabsContent value="general" className="mt-0 space-y-6">
                 <UserProfile />
-                {isSupabaseEnabled && (
+                {isD1Enabled() && (
                   <>
                     <AccountManagement />
                   </>
