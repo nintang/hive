@@ -137,7 +137,7 @@ export function ModelSelector({
   const trigger = (
     <Button
       variant="outline"
-      className={cn("dark:bg-secondary justify-between", className)}
+      className={cn("dark:bg-secondary justify-between rounded-full", className)}
       disabled={isLoadingModels}
     >
       <div className="flex items-center gap-2">
@@ -183,6 +183,11 @@ export function ModelSelector({
         <PopoverContentAuth />
       </Popover>
     )
+  }
+
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (isMobile === null) {
+    return trigger
   }
 
   if (isMobile) {
