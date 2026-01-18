@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react"
 import { PromptSystem } from "../suggestions/prompt-system"
 import { ButtonFileUpload } from "./button-file-upload"
 import { ButtonSearch } from "./button-search"
+import { ButtonToolMode, type ToolMode } from "./button-tool-mode"
 import { FileList } from "./file-list"
 
 type ChatInputProps = {
@@ -43,6 +44,9 @@ type ChatInputProps = {
   onSelectConnections?: (connectionIds: string[]) => void
   multiSelectConnections?: boolean
   maxConnections?: number
+  // Tool mode props
+  toolMode?: ToolMode
+  onToolModeChange?: (mode: ToolMode) => void
 }
 
 export function ChatInput({
@@ -69,6 +73,8 @@ export function ChatInput({
   onSelectConnections,
   multiSelectConnections = false,
   maxConnections = 5,
+  toolMode = "single",
+  onToolModeChange,
 }: ChatInputProps) {
   const selectModelConfig = getModelInfo(selectedModel)
   const hasSearchSupport = Boolean(selectModelConfig?.webSearch)
@@ -223,6 +229,12 @@ export function ChatInput({
                 isUserAuthenticated={isUserAuthenticated}
                 className="rounded-full"
               />
+              {onToolModeChange && (
+                <ButtonToolMode
+                  mode={toolMode}
+                  onToggle={onToolModeChange}
+                />
+              )}
               {hasSearchSupport ? (
                 <ButtonSearch
                   isSelected={enableSearch}
