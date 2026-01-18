@@ -32,11 +32,33 @@ export async function GET(request: Request) {
 
         const now = new Date().toISOString()
 
-        // Extract user ID from the connected account (varies by SDK version)
-        const userId = connectedAccount.member?.externalId ||
-                      connectedAccount.externalId ||
-                      connectedAccount.userId ||
-                      "unknown"
+        // Get user ID from Composio response (the userId we passed during initiate)
+        let userId = connectedAccount.userId
+
+        // If not available from Composio, try to find it from our pending connection requests
+        if (!userId) {
+          const pendingRequests = await db
+            .select()
+            .from(connectionRequests)
+            .where(eq(connectionRequests.status, "PENDING"))
+            .all()
+
+          // Find a pending request for this toolkit
+          const matchingRequest = pendingRequests.find(
+            (req) => req.toolkitSlug === connectedAccount.toolkit.slug
+          )
+          if (matchingRequest) {
+            userId = matchingRequest.userId
+          }
+        }
+
+        // If we still don't have a user ID, we can't proceed
+        if (!userId) {
+          console.error("Could not determine user ID for connected account:", connectionId)
+          return NextResponse.redirect(
+            new URL("/?connection=error", appUrl)
+          )
+        }
 
         // Store the connected account
         await db
@@ -60,14 +82,12 @@ export async function GET(request: Request) {
           })
           .run()
 
-        // Update any pending connection request
-        if (userId !== "unknown") {
-          await db
-            .update(connectionRequests)
-            .set({ status: "COMPLETED" })
-            .where(eq(connectionRequests.userId, userId))
-            .run()
-        }
+        // Update the connection request status
+        await db
+          .update(connectionRequests)
+          .set({ status: "COMPLETED" })
+          .where(eq(connectionRequests.userId, userId))
+          .run()
 
         return NextResponse.redirect(
           new URL("/?connection=success", appUrl)
