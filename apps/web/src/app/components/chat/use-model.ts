@@ -2,13 +2,15 @@ import { toast } from "@/components/ui/toast"
 import { Chats } from "@/lib/chat-store/types"
 import { MODEL_DEFAULT } from "@/lib/config"
 import type { UserProfile } from "@/lib/user/types"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 interface UseModelProps {
   currentChat: Chats | null
   user: UserProfile | null
   updateChatModel?: (chatId: string, model: string) => Promise<void>
   chatId: string | null
+  lastModelId?: string | null
+  setLastModelId?: (modelId: string | null) => void
 }
 
 /**
@@ -25,12 +27,15 @@ export function useModel({
   user,
   updateChatModel,
   chatId,
+  lastModelId,
+  setLastModelId,
 }: UseModelProps) {
-  // Calculate the effective model based on priority: chat model > first favorite model > default
+  // Calculate the effective model based on priority:
+  // chat model > last used model > first favorite model > default
   const getEffectiveModel = useCallback(() => {
     const firstFavoriteModel = user?.favorite_models?.[0]
-    return currentChat?.model || firstFavoriteModel || MODEL_DEFAULT
-  }, [currentChat?.model, user?.favorite_models])
+    return currentChat?.model || lastModelId || firstFavoriteModel || MODEL_DEFAULT
+  }, [currentChat?.model, lastModelId, user?.favorite_models])
 
   // Use local state only for temporary overrides, derive base value from props
   const [localSelectedModel, setLocalSelectedModel] = useState<string | null>(
@@ -43,6 +48,11 @@ export function useModel({
   // Function to handle model changes with proper validation and error handling
   const handleModelChange = useCallback(
     async (newModel: string) => {
+      // Always persist to user preferences when available
+      if (setLastModelId) {
+        setLastModelId(newModel)
+      }
+
       // For authenticated users without a chat, we can't persist yet
       // but we still allow the model selection for when they create a chat
       if (!user?.id && !chatId) {
@@ -76,7 +86,7 @@ export function useModel({
         setLocalSelectedModel(newModel)
       }
     },
-    [chatId, updateChatModel, user?.id]
+    [chatId, updateChatModel, user?.id, setLastModelId]
   )
 
   return {
