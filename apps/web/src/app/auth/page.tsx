@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation"
+import LoginPage from "./login-page"
 
-// Redirect /auth to Clerk's sign-in page
 export default function AuthPage() {
-  redirect("/sign-in")
+  return <LoginPage />
 }

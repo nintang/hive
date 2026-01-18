@@ -21,6 +21,7 @@ export default function LoginPage() {
           </div>
           <div className="mt-8 flex justify-center">
             <SignIn
+              routing="hash"
               appearance={{
                 elements: {
                   rootBox: "mx-auto",
