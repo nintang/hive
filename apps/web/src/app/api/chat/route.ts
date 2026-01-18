@@ -1,12 +1,13 @@
 import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
-import { messages, connectedAccounts } from "@/lib/db"
+import { messages } from "@/lib/db"
+import { getComposioClient } from "@/lib/composio/client"
 import { getAllModels } from "@/lib/models"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
 import { Attachment, Message as MessageAISDK } from "@ai-sdk/ui-utils"
 import { VercelProvider } from "@composio/vercel"
-import { streamText, ToolSet } from "ai"
-import { eq, and, inArray } from "drizzle-orm"
+import { streamText, ToolSet, stepCountIs } from "ai"
+import { eq } from "drizzle-orm"
 import {
   ensureChatExistsInDb,
   incrementMessageCount,
@@ -45,6 +46,14 @@ export async function POST(req: Request) {
       editCutoffTimestamp,
       selectedConnectionIds,
     } = (await req.json()) as ChatRequest
+
+    console.log("[Chat API] Request received:", {
+      hasMessages: !!chatMessages?.length,
+      chatId: rawChatId,
+      userId,
+      selectedConnectionIds,
+      isAuthenticated,
+    })
 
     if (!chatMessages || !rawChatId || !userId) {
       return new Response(
@@ -124,6 +133,9 @@ export async function POST(req: Request) {
       throw new Error(`Model ${model} not found`)
     }
 
+    // Capture the apiSdk function for use in callbacks where TypeScript can't narrow the type
+    const modelApiSdk = modelConfig.apiSdk
+
     const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT_DEFAULT
 
     let apiKey: string | undefined
@@ -135,43 +147,75 @@ export async function POST(req: Request) {
         undefined
     }
 
-    // Get Composio tools for selected connections
+    // Get Composio tools via Tool Router for selected connections
+    // Tool Router provides unified search, plan, authenticate, and execute across all tools
+    // Composio is the single source of truth for connections - no D1 lookup needed
     let composioTools: ToolSet = {}
-    if (selectedConnectionIds?.length && isAuthenticated && db) {
+    let activeToolkitSlugs: string[] = []
+    if (selectedConnectionIds?.length && isAuthenticated) {
       try {
-        // Look up the user's connected accounts that match selected IDs
-        const accounts = await db
-          .select()
-          .from(connectedAccounts)
-          .where(
-            and(
-              eq(connectedAccounts.userId, userId),
-              inArray(connectedAccounts.id, selectedConnectionIds),
-              eq(connectedAccounts.status, "ACTIVE")
-            )
-          )
-          .all()
+        // Query Composio directly for connected accounts (single source of truth)
+        const composioClient = getComposioClient()
 
-        if (accounts.length > 0) {
-          // Initialize Composio with VercelProvider - this makes tools.get return Vercel-compatible tools
+        console.log("[Composio] Checking connections for user:", userId)
+        console.log("[Composio] Selected toolkit slugs from UI:", selectedConnectionIds)
+
+        const accountsResult = await composioClient.connectedAccounts.list({
+          userIds: [userId],
+        })
+
+        console.log("[Composio] All connected accounts for user:", accountsResult.items.map(a => ({
+          id: a.id,
+          toolkit: a.toolkit.slug,
+          status: a.status,
+        })))
+
+        // Filter for active accounts that match the selected toolkits
+        const activeAccounts = accountsResult.items.filter(
+          (acc) => acc.status === "ACTIVE" && selectedConnectionIds.includes(acc.toolkit.slug)
+        )
+
+        console.log("[Composio] Active accounts matching selection:", activeAccounts.length)
+
+        if (activeAccounts.length > 0) {
+          // Initialize Composio with VercelProvider for AI SDK compatibility
           const { Composio } = await import("@composio/core")
           const composio = new Composio({
             apiKey: process.env.COMPOSIO_API_KEY,
             provider: new VercelProvider(),
           })
 
-          // Get unique toolkit slugs from the accounts
-          const toolkitSlugs = [...new Set(accounts.map((a) => a.toolkitSlug))]
+          activeToolkitSlugs = [...new Set(activeAccounts.map((a) => a.toolkit.slug))]
 
-          // Fetch tools from Composio for these toolkits (already in Vercel format)
-          composioTools = await composio.tools.get(userId, {
-            toolkits: toolkitSlugs,
+          console.log("[Composio] Creating Tool Router session for user:", userId)
+          console.log("[Composio] Toolkit slugs:", activeToolkitSlugs)
+          console.log("[Composio] Connected accounts:", activeAccounts.map(a => ({ id: a.id, toolkit: a.toolkit.slug, status: a.status })))
+
+          // Create a Tool Router session for this user with ONLY the selected toolkits
+          // Tool Router handles: search (finds right tools), context management (workbench for large results),
+          // and authentication across all connected apps
+          const session = await composio.create(userId, {
+            toolkits: { enable: activeToolkitSlugs },
           })
+
+          // Get native tools from the session (in Vercel AI SDK format)
+          composioTools = await session.tools()
+
+          console.log("[Composio] Tool Router tools loaded:", Object.keys(composioTools))
+          const toolsWithExecute = Object.entries(composioTools).filter(([, tool]) => typeof (tool as { execute?: unknown }).execute === 'function')
+          console.log("[Composio] Tools with execute function:", toolsWithExecute.length, "of", Object.keys(composioTools).length)
         }
       } catch (err) {
-        console.error("Failed to load Composio tools:", err)
+        console.error("Failed to load Composio Tool Router:", err)
         // Continue without tools if there's an error
       }
+    }
+
+    // Build system prompt with toolkit context so the LLM knows which tools are available
+    let systemPromptWithContext = effectiveSystemPrompt
+    if (activeToolkitSlugs.length > 0) {
+      const toolkitContext = `\n\n## Connected Tools\nYou have access to the following connected services: ${activeToolkitSlugs.join(", ")}.\nWhen searching for tools or performing actions, focus ONLY on these connected services. Do not suggest or search for tools from other services.`
+      systemPromptWithContext = effectiveSystemPrompt + toolkitContext
     }
 
     // Filter out data messages and transform for API compatibility
@@ -207,16 +251,44 @@ export async function POST(req: Request) {
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     // Type casts are required for AI SDK v6 compatibility with model providers
+    const hasTools = Object.keys(composioTools).length > 0
+
+    // Let AI SDK handle telemetry via experimental_telemetry
+    // OpenInference will automatically capture spans and group them by session
     const result = streamText({
-      model: modelConfig.apiSdk(apiKey, { enableSearch }) as any,
-      system: effectiveSystemPrompt,
+      model: modelApiSdk(apiKey, { enableSearch }) as any,
+      system: systemPromptWithContext,
       messages: apiMessages as any,
       tools: composioTools,
-      maxSteps: 10,
+      // AI SDK v6: Use stopWhen instead of maxSteps for multi-step tool execution
+      // Only enable multi-step when tools are available
+      stopWhen: hasTools ? stepCountIs(10) : stepCountIs(1),
+      experimental_telemetry: {
+        isEnabled: true,
+        metadata: {
+          sessionId: chatId,
+          userId,
+          model,
+          hasTools: String(hasTools),
+          toolCount: String(Object.keys(composioTools).length),
+        },
+      },
       onError: (err: unknown) => {
         console.error("Streaming error occurred:", err)
       },
-
+      // Called after each step completes (useful for debugging tool execution)
+      onStepFinish: async ({ stepType, toolCalls, toolResults }: { stepType: string; toolCalls: Array<{ toolName: string; args: unknown }>; toolResults: Array<{ toolName: string; result: unknown }> }) => {
+        console.log(`[Step ${stepType}] Tool calls:`, toolCalls?.map((c) => ({
+          toolName: c.toolName,
+          args: c.args,
+        })))
+        console.log(`[Step ${stepType}] Tool results:`, toolResults?.map((r) => ({
+          toolName: r.toolName,
+          hasResult: !!r.result,
+          resultType: typeof r.result,
+          resultPreview: r.result ? JSON.stringify(r.result).slice(0, 200) : null,
+        })))
+      },
       onFinish: async ({ response }: { response: any }) => {
         if (db) {
           await storeAssistantMessage({
