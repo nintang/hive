@@ -79,6 +79,9 @@ export async function GET() {
         show_conversation_previews: true,
         multi_model_enabled: false,
         hidden_models: [],
+        last_model_id: null,
+        last_connection_ids: [],
+        tool_mode: "single",
       })
     }
 
@@ -89,6 +92,9 @@ export async function GET() {
       show_conversation_previews: data.showConversationPreviews,
       multi_model_enabled: data.multiModelEnabled,
       hidden_models: data.hiddenModels ? JSON.parse(data.hiddenModels) : [],
+      last_model_id: data.lastModelId,
+      last_connection_ids: data.lastConnectionIds ? JSON.parse(data.lastConnectionIds) : [],
+      tool_mode: data.toolMode || "single",
     })
   } catch (error) {
     console.error("Error in user-preferences GET API:", error)
@@ -123,6 +129,9 @@ export async function PUT(request: NextRequest) {
       show_conversation_previews,
       multi_model_enabled,
       hidden_models,
+      last_model_id,
+      last_connection_ids,
+      tool_mode,
     } = body
 
     // Validate the data types
@@ -136,6 +145,20 @@ export async function PUT(request: NextRequest) {
     if (hidden_models && !Array.isArray(hidden_models)) {
       return NextResponse.json(
         { error: "hidden_models must be an array" },
+        { status: 400 }
+      )
+    }
+
+    if (last_connection_ids && !Array.isArray(last_connection_ids)) {
+      return NextResponse.json(
+        { error: "last_connection_ids must be an array" },
+        { status: 400 }
+      )
+    }
+
+    if (tool_mode && !["single", "multi"].includes(tool_mode)) {
+      return NextResponse.json(
+        { error: "tool_mode must be 'single' or 'multi'" },
         { status: 400 }
       )
     }
@@ -167,6 +190,10 @@ export async function PUT(request: NextRequest) {
     if (multi_model_enabled !== undefined)
       updateData.multiModelEnabled = multi_model_enabled
     if (hidden_models !== undefined) updateData.hiddenModels = JSON.stringify(hidden_models)
+    // Persisted chat settings
+    if (last_model_id !== undefined) updateData.lastModelId = last_model_id
+    if (last_connection_ids !== undefined) updateData.lastConnectionIds = JSON.stringify(last_connection_ids)
+    if (tool_mode !== undefined) updateData.toolMode = tool_mode
 
     if (!hasExisting) {
       // Insert new preferences
@@ -180,6 +207,9 @@ export async function PUT(request: NextRequest) {
           showConversationPreviews: show_conversation_previews ?? true,
           multiModelEnabled: multi_model_enabled ?? false,
           hiddenModels: JSON.stringify(hidden_models || []),
+          lastModelId: last_model_id ?? null,
+          lastConnectionIds: JSON.stringify(last_connection_ids || []),
+          toolMode: tool_mode || "single",
           createdAt: now,
           updatedAt: now,
         })
@@ -215,6 +245,9 @@ export async function PUT(request: NextRequest) {
       show_conversation_previews: data.showConversationPreviews,
       multi_model_enabled: data.multiModelEnabled,
       hidden_models: data.hiddenModels ? JSON.parse(data.hiddenModels) : [],
+      last_model_id: data.lastModelId,
+      last_connection_ids: data.lastConnectionIds ? JSON.parse(data.lastConnectionIds) : [],
+      tool_mode: data.toolMode || "single",
     })
   } catch (error) {
     console.error("Error in user-preferences PUT API:", error)

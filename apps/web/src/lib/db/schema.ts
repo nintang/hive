@@ -105,6 +105,10 @@ export const userPreferences = sqliteTable("user_preferences", {
   showConversationPreviews: integer("show_conversation_previews", { mode: "boolean" }),
   multiModelEnabled: integer("multi_model_enabled", { mode: "boolean" }),
   hiddenModels: text("hidden_models"),
+  // Persisted chat settings
+  lastModelId: text("last_model_id"),
+  lastConnectionIds: text("last_connection_ids"), // JSON array of toolkit slugs
+  toolMode: text("tool_mode"), // "single" or "multi"
   createdAt: text("created_at"),
   updatedAt: text("updated_at"),
 })

@@ -7,11 +7,13 @@ import {
   convertToApiFormat,
   defaultPreferences,
   type LayoutType,
+  type ToolModeType,
   type UserPreferences,
 } from "./utils"
 
 export {
   type LayoutType,
+  type ToolModeType,
   type UserPreferences,
   convertFromApiFormat,
   convertToApiFormat,
@@ -29,6 +31,10 @@ interface UserPreferencesContextType {
   setMultiModelEnabled: (enabled: boolean) => void
   toggleModelVisibility: (modelId: string) => void
   isModelHidden: (modelId: string) => boolean
+  // Persisted chat settings
+  setLastModelId: (modelId: string | null) => void
+  setLastConnectionIds: (connectionIds: string[]) => void
+  setToolMode: (mode: ToolModeType) => void
   isLoading: boolean
 }
 
@@ -227,6 +233,19 @@ export function UserPreferencesProvider({
     return (preferences.hiddenModels || []).includes(modelId)
   }
 
+  // Persisted chat settings setters
+  const setLastModelId = (modelId: string | null) => {
+    updatePreferences({ lastModelId: modelId })
+  }
+
+  const setLastConnectionIds = (connectionIds: string[]) => {
+    updatePreferences({ lastConnectionIds: connectionIds })
+  }
+
+  const setToolMode = (mode: ToolModeType) => {
+    updatePreferences({ toolMode: mode })
+  }
+
   return (
     <UserPreferencesContext.Provider
       value={{
@@ -238,6 +257,9 @@ export function UserPreferencesProvider({
         setMultiModelEnabled,
         toggleModelVisibility,
         isModelHidden,
+        setLastModelId,
+        setLastConnectionIds,
+        setToolMode,
         isLoading,
       }}
     >
