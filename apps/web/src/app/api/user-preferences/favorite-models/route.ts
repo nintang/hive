@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Update the user's favorite models
     await db
       .update(users)
-      .set({ favoriteModels: favorite_models })
+      .set({ favoriteModels: JSON.stringify(favorite_models) })
       .where(eq(users.id, userId))
       .run()
 
@@ -61,9 +61,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Handle case where favoriteModels might already be parsed (object) or is a JSON string
+    let favoriteModels: string[] = []
+    if (data.favoriteModels) {
+      if (typeof data.favoriteModels === "string") {
+        try {
+          favoriteModels = JSON.parse(data.favoriteModels)
+        } catch {
+          favoriteModels = []
+        }
+      } else if (Array.isArray(data.favoriteModels)) {
+        favoriteModels = data.favoriteModels
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      favorite_models: data.favoriteModels,
+      favorite_models: favoriteModels,
     })
   } catch (error) {
     console.error("Error in favorite-models API:", error)
@@ -105,8 +119,22 @@ export async function GET() {
       )
     }
 
+    // Handle case where favoriteModels might already be parsed (object) or is a JSON string
+    let favoriteModels: string[] = []
+    if (data.favoriteModels) {
+      if (typeof data.favoriteModels === "string") {
+        try {
+          favoriteModels = JSON.parse(data.favoriteModels)
+        } catch {
+          favoriteModels = []
+        }
+      } else if (Array.isArray(data.favoriteModels)) {
+        favoriteModels = data.favoriteModels
+      }
+    }
+
     return NextResponse.json({
-      favorite_models: (data.favoriteModels as string[]) || [],
+      favorite_models: favoriteModels,
     })
   } catch (error) {
     console.error("Error in favorite-models GET API:", error)

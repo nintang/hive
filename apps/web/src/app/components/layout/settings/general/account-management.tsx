@@ -2,26 +2,22 @@
 
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { useChats } from "@/lib/chat-store/chats/provider"
-import { useMessages } from "@/lib/chat-store/messages/provider"
 import { clearAllIndexedDBStores } from "@/lib/chat-store/persist"
-import { useUser } from "@/lib/user-store/provider"
+import { useClerk } from "@clerk/nextjs"
 import { SignOut } from "@phosphor-icons/react"
-import { useRouter } from "next/navigation"
 
 export function AccountManagement() {
-  const { signOut } = useUser()
-  const { resetChats } = useChats()
-  const { resetMessages } = useMessages()
-  const router = useRouter()
+  const { signOut } = useClerk()
 
   const handleSignOut = async () => {
     try {
-      await resetMessages()
-      await resetChats()
-      await signOut()
+      // Clear local storage before signing out
       await clearAllIndexedDBStores()
-      router.push("/")
+      // Use a callback to force a hard navigation after sign out
+      // This ensures all React state is cleared
+      await signOut(() => {
+        window.location.href = "/"
+      })
     } catch (e) {
       console.error("Sign out failed:", e)
       toast({ title: "Failed to sign out", status: "error" })

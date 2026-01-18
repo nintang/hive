@@ -30,11 +30,13 @@ export function ConnectionsTrigger({
 
   const handleConnect = toggleConnection
   const handleDisconnect = toggleConnection
+  const hasLabel = label != null && label !== ""
 
   const defaultTrigger = (
     <button
       className={cn(
         "text-muted-foreground hover:text-foreground hover:bg-muted bg-background pointer-events-auto rounded-full p-1.5 transition-colors",
+        hasLabel && "inline-flex items-center gap-2",
         hasSidebar ? "hidden" : "block",
         classNameTrigger
       )}

@@ -35,7 +35,7 @@ export async function fetchUserProfile(
     daily_reset: data.dailyReset,
     daily_pro_message_count: data.dailyProMessageCount ?? 0,
     daily_pro_reset: data.dailyProReset,
-    favorite_models: data.favoriteModels ?? [],
+    favorite_models: data.favoriteModels ? JSON.parse(data.favoriteModels) : [],
     system_prompt: data.systemPrompt,
     created_at: data.createdAt,
     last_active_at: data.lastActiveAt,
@@ -54,7 +54,7 @@ export async function updateUserProfile(
   const drizzleUpdates: Record<string, unknown> = {}
   if (updates.display_name !== undefined) drizzleUpdates.displayName = updates.display_name
   if (updates.profile_image !== undefined) drizzleUpdates.profileImage = updates.profile_image
-  if (updates.favorite_models !== undefined) drizzleUpdates.favoriteModels = updates.favorite_models
+  if (updates.favorite_models !== undefined) drizzleUpdates.favoriteModels = JSON.stringify(updates.favorite_models)
   if (updates.system_prompt !== undefined) drizzleUpdates.systemPrompt = updates.system_prompt
   if (updates.premium !== undefined) drizzleUpdates.premium = updates.premium
   if (updates.last_active_at !== undefined) drizzleUpdates.lastActiveAt = updates.last_active_at

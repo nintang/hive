@@ -14,7 +14,7 @@ export const users = sqliteTable("users", {
   dailyReset: text("daily_reset"),
   dailyProMessageCount: integer("daily_pro_message_count").default(0),
   dailyProReset: text("daily_pro_reset"),
-  favoriteModels: text("favorite_models", { mode: "json" }).$type<string[]>(),
+  favoriteModels: text("favorite_models"),
   systemPrompt: text("system_prompt"),
   createdAt: text("created_at"),
   lastActiveAt: text("last_active_at"),
@@ -104,7 +104,7 @@ export const userPreferences = sqliteTable("user_preferences", {
   showToolInvocations: integer("show_tool_invocations", { mode: "boolean" }),
   showConversationPreviews: integer("show_conversation_previews", { mode: "boolean" }),
   multiModelEnabled: integer("multi_model_enabled", { mode: "boolean" }),
-  hiddenModels: text("hidden_models", { mode: "json" }).$type<string[]>(),
+  hiddenModels: text("hidden_models"),
   createdAt: text("created_at"),
   updatedAt: text("updated_at"),
 })

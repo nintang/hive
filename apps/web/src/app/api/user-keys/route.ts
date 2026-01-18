@@ -76,7 +76,7 @@ export async function POST(request: Request) {
           .where(eq(users.id, userId))
           .get()
 
-        const currentFavorites = (userData?.favoriteModels as string[]) || []
+        const currentFavorites = userData?.favoriteModels ? JSON.parse(userData.favoriteModels) : []
 
         // Get models for this provider
         const providerModels = await getModelsForProvider(provider)
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
           // Update user's favorite models
           await db
             .update(users)
-            .set({ favoriteModels: updatedFavorites })
+            .set({ favoriteModels: JSON.stringify(updatedFavorites) })
             .where(eq(users.id, userId))
             .run()
         }

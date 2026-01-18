@@ -61,7 +61,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
         show_tool_invocations: preferencesData.showToolInvocations,
         show_conversation_previews: preferencesData.showConversationPreviews,
         multi_model_enabled: preferencesData.multiModelEnabled,
-        hidden_models: preferencesData.hiddenModels as string[],
+        hidden_models: preferencesData.hiddenModels ? JSON.parse(preferencesData.hiddenModels) : [],
       })
     : undefined
 
@@ -71,7 +71,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
     display_name: user.fullName || user.firstName || "",
     profile_image: user.imageUrl || "",
     anonymous: false,
-    favorite_models: userProfileData?.favoriteModels as string[],
+    favorite_models: userProfileData?.favoriteModels ? JSON.parse(userProfileData.favoriteModels) : [],
     preferences: formattedPreferences,
   } as UserProfile
 }

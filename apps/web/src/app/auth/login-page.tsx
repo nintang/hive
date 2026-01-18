@@ -21,7 +21,8 @@ export default function LoginPage() {
           </div>
           <div className="mt-8 flex justify-center">
             <SignIn
-              routing="hash"
+              fallbackRedirectUrl="/"
+              signUpFallbackRedirectUrl="/"
               appearance={{
                 elements: {
                   rootBox: "mx-auto",

@@ -40,7 +40,7 @@ import {
 } from "@phosphor-icons/react"
 import { AnimatePresence, motion } from "motion/react"
 import Image from "next/image"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ConnectionSubMenu } from "./sub-menu"
 
 type ConnectionSelectorProps = {
@@ -77,6 +77,7 @@ export function ConnectionSelector({
   } = useConnections()
   const isMobile = useBreakpoint(768)
 
+  const [isMounted, setIsMounted] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [isAddConnectionsOpen, setIsAddConnectionsOpen] = useState(false)
@@ -85,6 +86,11 @@ export function ConnectionSelector({
   )
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Track mounted state to avoid hydration mismatch
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Only show connected connections
   const connectedConnections = useMemo(() => {
@@ -355,6 +361,28 @@ export function ConnectionSelector({
     />
   )
 
+  // Return trigger only during SSR to avoid hydration mismatch
+  if (!isMounted || isMobile === null) {
+    return (
+      <Button
+        variant="outline"
+        className={cn(
+          "dark:bg-secondary justify-between rounded-full",
+          className
+        )}
+        disabled={true}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <PlugsConnectedIcon className="size-5" />
+          <span className="text-muted-foreground hidden sm:inline">
+            Connections
+          </span>
+        </div>
+        <CaretDownIcon className="ml-1 size-4 flex-shrink-0 opacity-50" />
+      </Button>
+    )
+  }
+
   // If user is not authenticated, show the auth popover
   if (!isUserAuthenticated) {
     return (
@@ -382,11 +410,6 @@ export function ConnectionSelector({
         <PopoverContentAuth />
       </Popover>
     )
-  }
-
-  // Return trigger only during SSR to avoid hydration mismatch
-  if (isMobile === null) {
-    return trigger
   }
 
   // Mobile: Use Drawer

@@ -15,7 +15,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { getModelInfo } from "@/lib/models"
-import { isD1Enabled } from "@/lib/db"
 import { cn } from "@/lib/utils"
 import { FileArrowUp, Paperclip } from "@phosphor-icons/react"
 import React from "react"
@@ -32,10 +31,6 @@ export function ButtonFileUpload({
   isUserAuthenticated,
   model,
 }: ButtonFileUploadProps) {
-  if (!isD1Enabled()) {
-    return null
-  }
-
   const isFileUploadAvailable = getModelInfo(model)?.vision
 
   if (!isFileUploadAvailable) {

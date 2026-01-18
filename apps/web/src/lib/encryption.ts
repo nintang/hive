@@ -37,7 +37,12 @@ export function encryptKey(plaintext: string): {
   }
 }
 
-export function decryptKey(encryptedData: string, ivHex: string): string {
+export function decryptKey(encryptedData: string | undefined | null, ivHex: string | undefined | null): string {
+  // Handle undefined/null input
+  if (!encryptedData || !ivHex) {
+    return ""
+  }
+
   if (!key) {
     // Return mock decryption when no key is configured (for UI-only mode)
     const [data] = encryptedData.split(":mock")

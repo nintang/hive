@@ -24,9 +24,9 @@ export async function getUserKey(
       .where(and(eq(userKeys.userId, userId), eq(userKeys.provider, provider)))
       .get()
 
-    if (!data) return null
+    if (!data || !data.encryptedKey || !data.iv) return null
 
-    return decryptKey(data.encryptedKey, data.iv)
+    return decryptKey(data.encryptedKey, data.iv) || null
   } catch (error) {
     console.error("Error retrieving user key:", error)
     return null
