@@ -9,7 +9,7 @@ import { API_ROUTE_CHAT } from "@/lib/routes"
 import type { UserProfile } from "@/lib/user/types"
 import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
+import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai"
 import { useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -22,11 +22,12 @@ export function getMessageContent(message: Message): string {
   // First check if message has content field (old format)
   if (message.content) return message.content
   // Then check for parts array (new UIMessage format)
+  // Join with double newlines for multi-step tool responses
   if (message.parts) {
     return message.parts
       .filter((part): part is { type: "text"; text: string } => part.type === "text")
       .map((part) => part.text)
-      .join("")
+      .join("\n\n")
   }
   return ""
 }
@@ -68,6 +69,7 @@ type UseChatCoreProps = {
   selectedModel: string
   clearDraft: () => void
   bumpChat: (chatId: string) => void
+  selectedConnectionIds: string[]
 }
 
 export function useChatCore({
@@ -86,6 +88,7 @@ export function useChatCore({
   selectedModel,
   clearDraft,
   bumpChat,
+  selectedConnectionIds,
 }: UseChatCoreProps) {
   // State management - AI SDK v6 requires manual input state management
   const [input, setInput] = useState(draftValue)
@@ -132,6 +135,19 @@ export function useChatCore({
     transport: new DefaultChatTransport({ api: API_ROUTE_CHAT }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     messages: initialMessages as any,
+
+    // AI SDK v6: Automatically resubmit when all server-side tool results are available
+    // This enables multi-step tool execution where the model can use tool results
+    // to generate follow-up responses or make additional tool calls
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+
+    // Handle client-side tool calls (if any tools need client-side execution)
+    // Server-side tools with execute() are handled automatically
+    // Note: Server-side tools (Composio) have execute() functions and are handled
+    // automatically. This callback is for client-side tools that need browser APIs
+    // or user interaction. Currently all our tools are server-side.
+    onToolCall: async () => {},
+
     onFinish: async ({ message }) => {
       // Cast UIMessage back to Message for caching
       cacheAndAddMessage(message as unknown as Message)
@@ -171,6 +187,7 @@ export function useChatCore({
     error,
     stop,
   } = chatResult
+
   // Cast messages and setMessages for Message compatibility
   const messages = chatResult.messages as unknown as Message[]
   const setMessages = chatResult.setMessages as unknown as React.Dispatch<
@@ -299,6 +316,7 @@ export function useChatCore({
             isAuthenticated,
             systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
             enableSearch,
+            selectedConnectionIds,
           },
         }
       )
@@ -329,6 +347,7 @@ export function useChatCore({
     isAuthenticated,
     systemPrompt,
     enableSearch,
+    selectedConnectionIds,
     sendMessage,
     clearDraft,
     messages.length,
@@ -437,6 +456,7 @@ export function useChatCore({
               systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
               enableSearch,
               editCutoffTimestamp: cutoffIso,
+              selectedConnectionIds,
             },
           }
         )
@@ -461,6 +481,7 @@ export function useChatCore({
       isAuthenticated,
       systemPrompt,
       enableSearch,
+      selectedConnectionIds,
       sendMessage,
       setMessages,
       bumpChat,
@@ -511,6 +532,7 @@ export function useChatCore({
               model: selectedModel,
               isAuthenticated,
               systemPrompt: SYSTEM_PROMPT_DEFAULT,
+              selectedConnectionIds,
             },
           }
         )
@@ -529,6 +551,7 @@ export function useChatCore({
       sendMessage,
       checkLimitsAndNotify,
       isAuthenticated,
+      selectedConnectionIds,
       setMessages,
     ]
   )
@@ -547,9 +570,10 @@ export function useChatCore({
         model: selectedModel,
         isAuthenticated,
         systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
+        selectedConnectionIds,
       },
     })
-  }, [user, chatId, selectedModel, isAuthenticated, systemPrompt, regenerate])
+  }, [user, chatId, selectedModel, isAuthenticated, systemPrompt, selectedConnectionIds, regenerate])
 
   // Handle input change
   const { setDraftValue } = useChatDraft(chatId)
