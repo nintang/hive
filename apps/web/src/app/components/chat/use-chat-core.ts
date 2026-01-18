@@ -174,6 +174,15 @@ export function useChatCore({
     }
   }, [prompt])
 
+  // Sync messages when initialMessages change (e.g., navigating between chats)
+  useEffect(() => {
+    // Only sync if we have a chatId and initialMessages has content
+    // This handles the case when MessagesProvider loads messages for a different chat
+    if (chatId && initialMessages.length > 0) {
+      setMessages(initialMessages)
+    }
+  }, [chatId, initialMessages, setMessages])
+
   // Reset messages when navigating from a chat to home
   useEffect(() => {
     if (
