@@ -70,6 +70,7 @@ type UseChatCoreProps = {
   clearDraft: () => void
   bumpChat: (chatId: string) => void
   selectedConnectionIds: string[]
+  projectId?: string | null
 }
 
 export function useChatCore({
@@ -89,6 +90,7 @@ export function useChatCore({
   clearDraft,
   bumpChat,
   selectedConnectionIds,
+  projectId,
 }: UseChatCoreProps) {
   // State management - AI SDK v6 requires manual input state management
   const [input, setInput] = useState(draftValue)
@@ -109,6 +111,8 @@ export function useChatCore({
   // Search params handling
   const searchParams = useSearchParams()
   const prompt = searchParams.get("prompt")
+  const autosubmit = searchParams.get("autosubmit") === "true"
+  const hasAutoSubmittedRef = useRef(false)
 
   // Chats operations
   const { updateTitle } = useChats()
@@ -194,12 +198,65 @@ export function useChatCore({
     React.SetStateAction<Message[]>
   >
 
-  // Handle search params on mount
+  // Handle search params on mount - set input from prompt param
   useEffect(() => {
     if (prompt && typeof window !== "undefined") {
       requestAnimationFrame(() => setInput(prompt))
     }
   }, [prompt])
+
+  // Auto-submit when coming from project page with autosubmit=true
+  useEffect(() => {
+    if (
+      autosubmit &&
+      prompt &&
+      chatId &&
+      !hasAutoSubmittedRef.current &&
+      status === "ready" &&
+      user?.id
+    ) {
+      hasAutoSubmittedRef.current = true
+
+      // Clear the URL params immediately to prevent re-submission on refresh
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("prompt")
+        url.searchParams.delete("autosubmit")
+        window.history.replaceState({}, "", url.toString())
+      }
+
+      // Send the message directly
+      sendMessage(
+        { text: prompt },
+        {
+          body: {
+            chatId,
+            userId: user.id,
+            model: selectedModel,
+            isAuthenticated,
+            systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
+            enableSearch: false,
+            selectedConnectionIds,
+            projectId,
+          },
+        }
+      )
+      setHasSentFirstMessage(true)
+    }
+  }, [
+    autosubmit,
+    prompt,
+    chatId,
+    status,
+    user?.id,
+    user,
+    sendMessage,
+    selectedModel,
+    isAuthenticated,
+    systemPrompt,
+    selectedConnectionIds,
+    projectId,
+  ])
 
   // Track synced state to avoid re-syncing during active streaming session
   const syncedRef = useRef<{ chatId: string | null; loaded: boolean }>({
@@ -317,6 +374,7 @@ export function useChatCore({
             systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
             enableSearch,
             selectedConnectionIds,
+            projectId,
           },
         }
       )
@@ -348,6 +406,7 @@ export function useChatCore({
     systemPrompt,
     enableSearch,
     selectedConnectionIds,
+    projectId,
     sendMessage,
     clearDraft,
     messages.length,
@@ -457,6 +516,7 @@ export function useChatCore({
               enableSearch,
               editCutoffTimestamp: cutoffIso,
               selectedConnectionIds,
+              projectId,
             },
           }
         )
@@ -482,6 +542,7 @@ export function useChatCore({
       systemPrompt,
       enableSearch,
       selectedConnectionIds,
+      projectId,
       sendMessage,
       setMessages,
       bumpChat,
@@ -533,6 +594,7 @@ export function useChatCore({
               isAuthenticated,
               systemPrompt: SYSTEM_PROMPT_DEFAULT,
               selectedConnectionIds,
+              projectId,
             },
           }
         )
@@ -552,6 +614,7 @@ export function useChatCore({
       checkLimitsAndNotify,
       isAuthenticated,
       selectedConnectionIds,
+      projectId,
       setMessages,
     ]
   )
@@ -571,9 +634,10 @@ export function useChatCore({
         isAuthenticated,
         systemPrompt: systemPrompt || SYSTEM_PROMPT_DEFAULT,
         selectedConnectionIds,
+        projectId,
       },
     })
-  }, [user, chatId, selectedModel, isAuthenticated, systemPrompt, selectedConnectionIds, regenerate])
+  }, [user, chatId, selectedModel, isAuthenticated, systemPrompt, selectedConnectionIds, projectId, regenerate])
 
   // Handle input change
   const { setDraftValue } = useChatDraft(chatId)

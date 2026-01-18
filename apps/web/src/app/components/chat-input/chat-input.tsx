@@ -13,6 +13,7 @@ import { getModelInfo } from "@/lib/models"
 import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react"
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { PromptSystem } from "../suggestions/prompt-system"
+import { SkillsTrigger } from "../skills"
 import { ButtonFileUpload } from "./button-file-upload"
 import { ButtonSearch } from "./button-search"
 import { ButtonToolMode, type ToolMode } from "./button-tool-mode"
@@ -47,6 +48,8 @@ type ChatInputProps = {
   // Tool mode props
   toolMode?: ToolMode
   onToolModeChange?: (mode: ToolMode) => void
+  // Project props (for skills)
+  projectId?: string | null
 }
 
 export function ChatInput({
@@ -75,6 +78,7 @@ export function ChatInput({
   maxConnections = 5,
   toolMode = "single",
   onToolModeChange,
+  projectId,
 }: ChatInputProps) {
   const selectModelConfig = getModelInfo(selectedModel)
   const hasSearchSupport = Boolean(selectModelConfig?.webSearch)
@@ -229,6 +233,9 @@ export function ChatInput({
                 isUserAuthenticated={isUserAuthenticated}
                 className="rounded-full"
               />
+              {isUserAuthenticated && (
+                <SkillsTrigger projectId={projectId ?? null} />
+              )}
               {onToolModeChange && (
                 <ButtonToolMode
                   mode={toolMode}

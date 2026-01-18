@@ -168,6 +168,7 @@ export function Chat() {
     clearDraft,
     bumpChat,
     selectedConnectionIds,
+    projectId: currentChat?.project_id ?? null,
   })
 
   // Memoize the conversation props to prevent unnecessary rerenders
@@ -222,6 +223,8 @@ export function Chat() {
       toolMode,
       onToolModeChange: setToolMode,
       multiSelectConnections: toolMode === "multi",
+      // Project props (for skills)
+      projectId: currentChat?.project_id ?? null,
     }),
     [
       input,
@@ -249,6 +252,7 @@ export function Chat() {
       setSelectedConnectionIds,
       toolMode,
       setToolMode,
+      currentChat?.project_id,
     ]
   )
 
