@@ -144,8 +144,18 @@ export function useChatCore({
             : null)
 
         if (!effectiveChatId) return
+
+        // Sync message IDs with database
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await syncRecentMessages(effectiveChatId, chatResult.setMessages as any, 2)
+
+        // Cache ALL current messages to IndexedDB so they persist on reload
+        // This includes the user message that sendMessage added
+        const { writeToIndexedDB } = await import("@/lib/chat-store/persist")
+        await writeToIndexedDB("messages", {
+          id: effectiveChatId,
+          messages: chatResult.messages
+        })
       } catch {
         // Message ID reconciliation failed silently
       }
@@ -174,14 +184,41 @@ export function useChatCore({
     }
   }, [prompt])
 
-  // Sync messages when initialMessages change (e.g., navigating between chats)
+  // Track synced state to avoid re-syncing during active streaming session
+  const syncedRef = useRef<{ chatId: string | null; loaded: boolean }>({
+    chatId: null,
+    loaded: false
+  })
+
+  // Sync messages when navigating to a different chat
+  // Don't sync during active streaming - the SDK manages its own state
   useEffect(() => {
-    // Only sync if we have a chatId and initialMessages has content
-    // This handles the case when MessagesProvider loads messages for a different chat
-    if (chatId && initialMessages.length > 0) {
-      setMessages(initialMessages)
+    // Reset tracking when navigating away
+    if (!chatId) {
+      syncedRef.current = { chatId: null, loaded: false }
+      return
     }
-  }, [chatId, initialMessages, setMessages])
+
+    // If we're actively streaming/submitting, don't sync - SDK is managing messages
+    if (status !== "ready") {
+      // But track that we're on this chat
+      if (syncedRef.current.chatId !== chatId) {
+        syncedRef.current = { chatId, loaded: true } // Mark as loaded to skip future syncs
+      }
+      return
+    }
+
+    // If we navigated to a different chat, reset tracking
+    if (syncedRef.current.chatId !== chatId) {
+      syncedRef.current = { chatId, loaded: false }
+    }
+
+    // Sync if we haven't loaded yet AND we have messages to load
+    if (!syncedRef.current.loaded && initialMessages.length > 0) {
+      setMessages(initialMessages)
+      syncedRef.current.loaded = true
+    }
+  }, [chatId, initialMessages, setMessages, status])
 
   // Reset messages when navigating from a chat to home
   useEffect(() => {
@@ -207,34 +244,24 @@ export function useChatCore({
       return
     }
 
-    const optimisticId = `optimistic-${Date.now().toString()}`
-    const optimisticAttachments =
-      files.length > 0 ? createOptimisticAttachments(files) : []
-
-    const optimisticMessage = createUserMessage(
-      optimisticId,
-      input,
-      optimisticAttachments.length > 0 ? optimisticAttachments : undefined
-    )
-
-    setMessages((prev) => [...prev, optimisticMessage])
+    // Store and clear input/files immediately for responsive UX
     const submittedInput = input
-    setInput("")
-
     const submittedFiles = [...files]
+    setInput("")
     setFiles([])
+
+    const optimisticAttachments =
+      submittedFiles.length > 0 ? createOptimisticAttachments(submittedFiles) : []
 
     try {
       const allowed = await checkLimitsAndNotify(uid)
       if (!allowed) {
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
         cleanupOptimisticAttachments(optimisticAttachments)
         return
       }
 
       const currentChatId = await ensureChatExists(uid, submittedInput)
       if (!currentChatId) {
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
         cleanupOptimisticAttachments(optimisticAttachments)
         return
       }
@@ -246,7 +273,6 @@ export function useChatCore({
           title: `The message you submitted was too long, please submit something shorter. (Max ${MESSAGE_MAX_LENGTH} characters)`,
           status: "error",
         })
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
         cleanupOptimisticAttachments(optimisticAttachments)
         return
       }
@@ -255,18 +281,14 @@ export function useChatCore({
       if (submittedFiles.length > 0) {
         attachments = await handleFileUploads(uid, currentChatId)
         if (attachments === null) {
-          setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
           cleanupOptimisticAttachments(optimisticAttachments)
           return
         }
       }
 
-      // Remove optimistic message before sendMessage adds the real one
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
       cleanupOptimisticAttachments(optimisticAttachments)
 
-      // Use sendMessage with AI SDK v6 API
-      // Note: sendMessage handles adding the user message to state internally
+      // Use sendMessage - it handles adding the user message to state
       await sendMessage(
         { text: submittedInput },
         {
@@ -281,8 +303,6 @@ export function useChatCore({
         }
       )
 
-      // Don't call cacheAndAddMessage here - sendMessage already adds the user message
-      // and onFinish will cache the assistant message
       clearDraft()
       setHasSentFirstMessage(true)
 
@@ -290,7 +310,6 @@ export function useChatCore({
         bumpChat(currentChatId)
       }
     } catch {
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
       cleanupOptimisticAttachments(optimisticAttachments)
       toast({ title: "Failed to send message", status: "error" })
     } finally {
@@ -301,7 +320,6 @@ export function useChatCore({
     files,
     createOptimisticAttachments,
     input,
-    setMessages,
     setFiles,
     checkLimitsAndNotify,
     cleanupOptimisticAttachments,
