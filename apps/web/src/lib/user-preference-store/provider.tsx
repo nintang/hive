@@ -47,7 +47,7 @@ async function fetchUserPreferences(): Promise<UserPreferences> {
 
 async function updateUserPreferences(
   update: Partial<UserPreferences>
-): Promise<UserPreferences> {
+): Promise<UserPreferences | null> {
   const response = await fetch("/api/user-preferences", {
     method: "PUT",
     headers: {
@@ -57,7 +57,7 @@ async function updateUserPreferences(
   })
 
   if (!response.ok) {
-    throw new Error("Failed to update user preferences")
+    return null
   }
 
   const data = await response.json()
@@ -156,12 +156,15 @@ export function UserPreferencesProvider({
       }
 
       try {
-        return await updateUserPreferences(update)
+        const result = await updateUserPreferences(update)
+        if (result) {
+          return result
+        }
+        // If result is null (API error), fall back to local storage
+        saveToLocalStorage(updated)
+        return updated
       } catch (error) {
-        console.error(
-          "Failed to update user preferences in database, falling back to localStorage:",
-          error
-        )
+        // For network errors or other unexpected errors
         saveToLocalStorage(updated)
         return updated
       }
@@ -189,9 +192,9 @@ export function UserPreferencesProvider({
   const updatePreferences = mutation.mutate
 
   const setLayout = (layout: LayoutType) => {
-    if (isAuthenticated || layout === "fullscreen") {
-      updatePreferences({ layout })
-    }
+    // if (isAuthenticated || layout === "fullscreen") {
+    updatePreferences({ layout })
+    // }
   }
 
   const setPromptSuggestions = (enabled: boolean) => {
