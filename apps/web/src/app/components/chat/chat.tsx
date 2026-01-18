@@ -117,7 +117,7 @@ export function Chat() {
     input,
     status,
     stop,
-    hasSentFirstMessageRef,
+    hasSentFirstMessage,
     isSubmitting,
     enableSearch,
     setEnableSearch,
@@ -229,7 +229,7 @@ export function Chat() {
     !isSubmitting &&
     status === "ready" &&
     messages.length === 0 &&
-    !hasSentFirstMessageRef.current // Don't redirect if we've already sent a message in this session
+    !hasSentFirstMessage // Don't redirect if we've already sent a message in this session
   ) {
     return redirect("/")
   }

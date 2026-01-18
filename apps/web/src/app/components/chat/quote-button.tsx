@@ -1,32 +1,32 @@
 import useClickOutside from "@/components/motion-primitives/useClickOutside"
 import { Button } from "@/components/ui/button"
 import { Quote } from "lucide-react"
-import { RefObject, useRef } from "react"
+import { RefObject, useMemo, useRef } from "react"
 
 type QuoteButtonProps = {
   mousePosition: { x: number; y: number }
   onQuote: () => void
-  messageContainerRef: RefObject<HTMLElement | null>
+  containerRect: DOMRect | null
   onDismiss: () => void
 }
 
 export function QuoteButton({
   mousePosition,
   onQuote,
-  messageContainerRef,
+  containerRect,
   onDismiss,
 }: QuoteButtonProps) {
   const buttonRef = useRef<HTMLDivElement>(null)
   useClickOutside(buttonRef as RefObject<HTMLElement>, onDismiss)
 
   const buttonHeight = 60
-  const containerRect = messageContainerRef.current?.getBoundingClientRect()
-  const position = containerRect
-    ? {
-        top: mousePosition.y - containerRect.top - buttonHeight,
-        left: mousePosition.x - containerRect.left,
-      }
-    : { top: 0, left: 0 }
+  const position = useMemo(() => {
+    if (!containerRect) return { top: 0, left: 0 }
+    return {
+      top: mousePosition.y - containerRect.top - buttonHeight,
+      left: mousePosition.x - containerRect.left,
+    }
+  }, [mousePosition.x, mousePosition.y, containerRect])
 
   return (
     <div

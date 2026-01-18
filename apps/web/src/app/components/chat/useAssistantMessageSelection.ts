@@ -4,6 +4,7 @@ type SelectionInfo = {
   text: string
   position: { x: number; y: number }
   messageId: string
+  containerRect: DOMRect | null
 }
 
 export const useAssistantMessageSelection = (
@@ -60,6 +61,9 @@ export const useAssistantMessageSelection = (
           Math.min(event.clientY, rect.bottom)
         )
 
+        // Capture container rect at selection time
+        const containerRect = ref.current?.getBoundingClientRect() || null
+
         setSelectionInfo({
           text: selectedText.trim(),
           position: {
@@ -67,6 +71,7 @@ export const useAssistantMessageSelection = (
             y: constrainedY,
           },
           messageId,
+          containerRect,
         })
       } else {
         setSelectionInfo(null)
