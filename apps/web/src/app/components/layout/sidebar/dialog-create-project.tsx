@@ -10,10 +10,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { toast } from "@/components/ui/toast"
 import { fetchClient } from "@/lib/fetch"
+import type { Connection } from "@/lib/connections/types"
+import { useConnections } from "@/lib/connections/use-connections"
+import { cn } from "@/lib/utils"
+import {
+  CheckIcon,
+  MagnifyingGlassIcon,
+  UsersIcon,
+} from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { AnimatePresence, motion } from "motion/react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 type DialogCreateProjectProps = {
   isOpen: boolean
@@ -32,8 +44,43 @@ export function DialogCreateProject({
   setIsOpen,
 }: DialogCreateProjectProps) {
   const [projectName, setProjectName] = useState("")
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
   const queryClient = useQueryClient()
   const router = useRouter()
+
+  const { connections, isLoading: isLoadingConnections } = useConnections()
+
+  // Only show connected connections as available members
+  const connectedConnections = useMemo(() => {
+    return connections.filter((c) => c.connected)
+  }, [connections])
+
+  // Filter by search query
+  const filteredConnections = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+    if (!query) return connectedConnections
+
+    return connectedConnections.filter(
+      (conn) =>
+        conn.name.toLowerCase().includes(query) ||
+        conn.description.toLowerCase().includes(query)
+    )
+  }, [connectedConnections, searchQuery])
+
+  // Get selected member objects
+  const selectedMembers = useMemo(() => {
+    return connectedConnections.filter((c) => selectedMemberIds.includes(c.id))
+  }, [connectedConnections, selectedMemberIds])
+
+  const handleMemberToggle = (connectionId: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(connectionId)
+        ? prev.filter((id) => id !== connectionId)
+        : [...prev, connectionId]
+    )
+  }
+
   const createProjectMutation = useMutation({
     mutationFn: async (name: string): Promise<CreateProjectData> => {
       const response = await fetchClient("/api/projects", {
@@ -45,18 +92,44 @@ export function DialogCreateProject({
       })
 
       if (!response.ok) {
-        throw new Error("Failed to create project")
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "Failed to create project")
       }
 
       return response.json()
     },
     onSuccess: (data) => {
+      // Store selected members in localStorage for now (no DB integration)
+      if (selectedMemberIds.length > 0) {
+        const projectMembersKey = `hivechat:project-members:${data.id}`
+        localStorage.setItem(projectMembersKey, JSON.stringify(selectedMemberIds))
+      }
+
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       router.push(`/p/${data.id}`)
-      setProjectName("")
+      resetForm()
       setIsOpen(false)
     },
+    onError: (error: Error) => {
+      toast({
+        title: error.message || "Failed to create project",
+        status: "error",
+      })
+    },
   })
+
+  const resetForm = () => {
+    setProjectName("")
+    setSelectedMemberIds([])
+    setSearchQuery("")
+  }
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      resetForm()
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,28 +139,133 @@ export function DialogCreateProject({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>
-              Enter a name for your new project.
+              Create a group chat with your connected tools.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="Project name"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              autoFocus
-            />
+
+          <div className="space-y-4 py-4">
+            {/* Project Name */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Project Name</label>
+              <Input
+                placeholder="e.g., Work Team, Personal Tasks"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            {/* Selected Members Preview */}
+            {selectedMembers.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-muted-foreground text-sm">
+                  Members ({selectedMembers.length})
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <AnimatePresence mode="popLayout">
+                    {selectedMembers.map((member) => (
+                      <motion.div
+                        key={member.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 0.15 }}
+                        className="bg-accent flex items-center gap-1.5 rounded-full py-1 pr-2 pl-1"
+                      >
+                        <div className="relative size-5 overflow-hidden rounded-full">
+                          <Image
+                            src={member.logo}
+                            alt={member.name}
+                            fill
+                            className="object-contain"
+                            unoptimized
+                          />
+                        </div>
+                        <span className="text-xs font-medium">
+                          {member.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleMemberToggle(member.id)}
+                          className="hover:bg-accent-foreground/10 ml-0.5 rounded-full p-0.5"
+                        >
+                          <span className="text-muted-foreground text-xs">
+                            ×
+                          </span>
+                        </button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            )}
+
+            {/* Add Members Section */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Add Members</label>
+              <div className="border-input rounded-lg border">
+                {/* Search */}
+                <div className="relative border-b">
+                  <MagnifyingGlassIcon className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
+                  <Input
+                    placeholder="Search connections..."
+                    className="rounded-b-none border-none pl-8 shadow-none focus-visible:ring-0"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                {/* Connection List */}
+                <ScrollArea className="h-[200px]">
+                  <div className="p-1">
+                    {isLoadingConnections ? (
+                      <div className="text-muted-foreground flex items-center justify-center py-8 text-sm">
+                        Loading connections...
+                      </div>
+                    ) : filteredConnections.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <UsersIcon className="text-muted-foreground mb-2 size-8" />
+                        <p className="text-muted-foreground text-sm">
+                          {searchQuery
+                            ? "No matching connections"
+                            : "No connections available"}
+                        </p>
+                        {!searchQuery && (
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            Connect tools in the sidebar first
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {filteredConnections.map((conn) => (
+                          <ConnectionItem
+                            key={conn.id}
+                            connection={conn}
+                            isSelected={selectedMemberIds.includes(conn.id)}
+                            onToggle={() => handleMemberToggle(conn.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
           </div>
+
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsOpen(false)}
+              onClick={() => handleOpenChange(false)}
             >
               Cancel
             </Button>
@@ -103,5 +281,46 @@ export function DialogCreateProject({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ConnectionItem({
+  connection,
+  isSelected,
+  onToggle,
+}: {
+  connection: Connection
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        "hover:bg-accent/50 flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2",
+        isSelected && "bg-accent"
+      )}
+      onClick={onToggle}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="relative size-6 flex-shrink-0 overflow-hidden rounded">
+          <Image
+            src={connection.logo}
+            alt={connection.name}
+            fill
+            className="object-contain"
+            unoptimized
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{connection.name}</span>
+          <span className="text-muted-foreground truncate text-xs">
+            {connection.toolsCount} tools
+          </span>
+        </div>
+      </div>
+      <div className="flex-shrink-0">
+        {isSelected && <CheckIcon className="text-primary size-4" />}
+      </div>
+    </div>
   )
 }
