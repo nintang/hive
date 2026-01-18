@@ -27,6 +27,19 @@ export const projects = sqliteTable("projects", {
     .notNull()
     .references(() => users.id),
   name: text("name").notNull(),
+  lastModelId: text("last_model_id"),
+  lastConnectionIds: text("last_connection_ids"), // JSON array of toolkit slugs
+  createdAt: text("created_at"),
+})
+
+// Project skills table (junction table - skills are defined in code registry)
+export const projectSkills = sqliteTable("project_skills", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  skillId: text("skill_id").notNull(), // References built-in skill registry
+  enabled: integer("enabled", { mode: "boolean" }).default(true),
   createdAt: text("created_at"),
 })
 
@@ -142,6 +155,14 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     references: [users.id],
   }),
   chats: many(chats),
+  skills: many(projectSkills),
+}))
+
+export const projectSkillsRelations = relations(projectSkills, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectSkills.projectId],
+    references: [projects.id],
+  }),
 }))
 
 export const chatsRelations = relations(chats, ({ one, many }) => ({
@@ -248,6 +269,8 @@ export type Message = typeof messages.$inferSelect
 export type NewMessage = typeof messages.$inferInsert
 export type Project = typeof projects.$inferSelect
 export type NewProject = typeof projects.$inferInsert
+export type ProjectSkill = typeof projectSkills.$inferSelect
+export type NewProjectSkill = typeof projectSkills.$inferInsert
 export type ChatAttachment = typeof chatAttachments.$inferSelect
 export type NewChatAttachment = typeof chatAttachments.$inferInsert
 export type UserKey = typeof userKeys.$inferSelect
