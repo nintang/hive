@@ -1,9 +1,9 @@
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, chats } from "@/lib/db"
+import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
     const { chatId, pinned } = await request.json()
 
     if (!chatId || typeof pinned !== "boolean") {
@@ -13,25 +13,16 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json({ success: true }, { status: 200 })
     }
 
+    const db = getDb()
     const toggle = pinned
-      ? { pinned: true, pinned_at: new Date().toISOString() }
-      : { pinned: false, pinned_at: null }
+      ? { pinned: true, pinnedAt: new Date().toISOString() }
+      : { pinned: false, pinnedAt: null }
 
-    const { error } = await supabase
-      .from("chats")
-      .update(toggle)
-      .eq("id", chatId)
-
-    if (error) {
-      return NextResponse.json(
-        { error: "Failed to update pinned" },
-        { status: 500 }
-      )
-    }
+    await db.update(chats).set(toggle).where(eq(chats.id, chatId)).run()
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (error) {

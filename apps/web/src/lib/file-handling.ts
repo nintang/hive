@@ -1,9 +1,8 @@
 import { toast } from "@/components/ui/toast"
-import { SupabaseClient } from "@supabase/supabase-js"
 import * as fileType from "file-type"
 import { DAILY_FILE_UPLOAD_LIMIT } from "./config"
-import { createClient } from "./supabase/client"
-import { isSupabaseEnabled } from "./supabase/config"
+import { isD1Enabled, getDb, chatAttachments } from "./db"
+import { eq, gte, and } from "drizzle-orm"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -51,29 +50,6 @@ export async function validateFile(
   return { isValid: true }
 }
 
-export async function uploadFile(
-  supabase: SupabaseClient,
-  file: File
-): Promise<string> {
-  const fileExt = file.name.split(".").pop()
-  const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
-  const filePath = `uploads/${fileName}`
-
-  const { error } = await supabase.storage
-    .from("chat-attachments")
-    .upload(filePath, file)
-
-  if (error) {
-    throw new Error(`Error uploading file: ${error.message}`)
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("chat-attachments").getPublicUrl(filePath)
-
-  return publicUrl
-}
-
 export function createAttachment(file: File, url: string): Attachment {
   return {
     name: file.name,
@@ -87,7 +63,6 @@ export async function processFiles(
   chatId: string,
   userId: string
 ): Promise<Attachment[]> {
-  const supabase = isSupabaseEnabled ? createClient() : null
   const attachments: Attachment[] = []
 
   for (const file of files) {
@@ -103,23 +78,26 @@ export async function processFiles(
     }
 
     try {
-      const url = supabase
-        ? await uploadFile(supabase, file)
-        : URL.createObjectURL(file)
+      // For now, use object URLs (files are sent as base64 in the message)
+      // R2 storage integration will be added later
+      const url = URL.createObjectURL(file)
 
-      if (supabase) {
-        const { error } = await supabase.from("chat_attachments").insert({
-          chat_id: chatId,
-          user_id: userId,
-          file_url: url,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-        })
-
-        if (error) {
-          throw new Error(`Database insertion failed: ${error.message}`)
-        }
+      // Track attachment in database if D1 is enabled
+      if (isD1Enabled()) {
+        const db = getDb()
+        await db
+          .insert(chatAttachments)
+          .values({
+            id: crypto.randomUUID(),
+            chatId,
+            userId,
+            fileUrl: url,
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,
+            createdAt: new Date().toISOString(),
+          })
+          .run()
       }
 
       attachments.push(createAttachment(file, url))
@@ -140,31 +118,29 @@ export class FileUploadLimitError extends Error {
 }
 
 export async function checkFileUploadLimit(userId: string) {
-  if (!isSupabaseEnabled) return 0
+  if (!isD1Enabled()) return 0
 
-  const supabase = createClient()
-
-  if (!supabase) {
-    toast({
-      title: "File upload is not supported in this deployment",
-      status: "info",
-    })
-    return 0
-  }
+  const db = getDb()
 
   const now = new Date()
   const startOfToday = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   )
 
-  const { count, error } = await supabase
-    .from("chat_attachments")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .gte("created_at", startOfToday.toISOString())
+  const result = await db
+    .select({ id: chatAttachments.id })
+    .from(chatAttachments)
+    .where(
+      and(
+        eq(chatAttachments.userId, userId),
+        gte(chatAttachments.createdAt, startOfToday.toISOString())
+      )
+    )
+    .all()
 
-  if (error) throw new Error(error.message)
-  if (count && count >= DAILY_FILE_UPLOAD_LIMIT) {
+  const count = result.length
+
+  if (count >= DAILY_FILE_UPLOAD_LIMIT) {
     throw new FileUploadLimitError("Daily file upload limit reached.")
   }
 

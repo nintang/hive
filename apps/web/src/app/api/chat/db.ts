@@ -1,13 +1,14 @@
 import type { ContentPart, Message } from "@/app/types/api.types"
-import type { Database, Json } from "@/app/types/database.types"
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { getDb, messages } from "@/lib/db"
+
+type DbClient = ReturnType<typeof getDb>
 
 const DEFAULT_STEP = 0
 
 export async function saveFinalAssistantMessage(
-  supabase: SupabaseClient<Database>,
+  db: DbClient,
   chatId: string,
-  messages: Message[],
+  messageList: Message[],
   message_group_id?: string,
   model?: string
 ) {
@@ -15,7 +16,7 @@ export async function saveFinalAssistantMessage(
   const toolMap = new Map<string, ContentPart>()
   const textParts: string[] = []
 
-  for (const msg of messages) {
+  for (const msg of messageList) {
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part.type === "text") {
@@ -74,19 +75,23 @@ export async function saveFinalAssistantMessage(
 
   const finalPlainText = textParts.join("\n\n")
 
-  const { error } = await supabase.from("messages").insert({
-    chat_id: chatId,
-    role: "assistant",
-    content: finalPlainText || "",
-    parts: parts as unknown as Json,
-    message_group_id,
-    model,
-  })
+  try {
+    await db
+      .insert(messages)
+      .values({
+        chatId,
+        role: "assistant",
+        content: finalPlainText || "",
+        parts: parts as unknown,
+        messageGroupId: message_group_id || null,
+        model: model || null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
 
-  if (error) {
-    console.error("Error saving final assistant message:", error)
-    throw new Error(`Failed to save assistant message: ${error.message}`)
-  } else {
     console.log("Assistant message saved successfully (merged).")
+  } catch (error) {
+    console.error("Error saving final assistant message:", error)
+    throw new Error(`Failed to save assistant message: ${error}`)
   }
 }

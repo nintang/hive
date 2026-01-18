@@ -1,24 +1,20 @@
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, users } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
         { error: "Database connection failed" },
         { status: 500 }
       )
     }
 
-    // Get the current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -42,18 +38,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update the user's favorite models
-    const { data, error } = await supabase
-      .from("users")
-      .update({
-        favorite_models,
-      })
-      .eq("id", user.id)
-      .select("favorite_models")
-      .single()
+    const db = getDb()
 
-    if (error) {
-      console.error("Error updating favorite models:", error)
+    // Update the user's favorite models
+    await db
+      .update(users)
+      .set({ favoriteModels: favorite_models })
+      .where(eq(users.id, userId))
+      .run()
+
+    // Fetch the updated data
+    const data = await db
+      .select({ favoriteModels: users.favoriteModels })
+      .from(users)
+      .where(eq(users.id, userId))
+      .get()
+
+    if (!data) {
       return NextResponse.json(
         { error: "Failed to update favorite models" },
         { status: 500 }
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      favorite_models: data.favorite_models,
+      favorite_models: data.favoriteModels,
     })
   } catch (error) {
     console.error("Error in favorite-models API:", error)
@@ -75,34 +76,29 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
         { error: "Database connection failed" },
         { status: 500 }
       )
     }
 
-    // Get the current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get the user's favorite models
-    const { data, error } = await supabase
-      .from("users")
-      .select("favorite_models")
-      .eq("id", user.id)
-      .single()
+    const db = getDb()
 
-    if (error) {
-      console.error("Error fetching favorite models:", error)
+    // Get the user's favorite models
+    const data = await db
+      .select({ favoriteModels: users.favoriteModels })
+      .from(users)
+      .where(eq(users.id, userId))
+      .get()
+
+    if (!data) {
       return NextResponse.json(
         { error: "Failed to fetch favorite models" },
         { status: 500 }
@@ -110,7 +106,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      favorite_models: data.favorite_models || [],
+      favorite_models: (data.favoriteModels as string[]) || [],
     })
   } catch (error) {
     console.error("Error in favorite-models GET API:", error)

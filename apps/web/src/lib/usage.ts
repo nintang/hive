@@ -5,10 +5,10 @@ import {
   FREE_MODELS_IDS,
   NON_AUTH_DAILY_MESSAGE_LIMIT,
 } from "@/lib/config"
-import { SupabaseClient } from "@supabase/supabase-js"
+import { getDb, users } from "@/lib/db"
+import { eq } from "drizzle-orm"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnySupabaseClient = SupabaseClient<any, any, any>
+type DbClient = ReturnType<typeof getDb>
 
 const isFreeModel = (modelId: string) => FREE_MODELS_IDS.includes(modelId)
 const isProModel = (modelId: string) => !isFreeModel(modelId)
@@ -16,40 +16,34 @@ const isProModel = (modelId: string) => !isFreeModel(modelId)
 /**
  * Checks the user's daily usage to see if they've reached their limit.
  * Uses the `anonymous` flag from the user record to decide which daily limit applies.
- *
- * @param supabase - Your Supabase client.
- * @param userId - The ID of the user.
- * @param trackDaily - Whether to track the daily message count (default is true)
- * @throws UsageLimitError if the daily limit is reached, or a generic Error if checking fails.
- * @returns User data including message counts and reset date
  */
-export async function checkUsage(supabase: AnySupabaseClient, userId: string) {
-  const { data: userData, error: userDataError } = await supabase
-    .from("users")
-    .select(
-      "message_count, daily_message_count, daily_reset, anonymous, premium"
-    )
-    .eq("id", userId)
-    .maybeSingle()
+export async function checkUsage(db: DbClient, userId: string) {
+  const userData = await db
+    .select({
+      messageCount: users.messageCount,
+      dailyMessageCount: users.dailyMessageCount,
+      dailyReset: users.dailyReset,
+      anonymous: users.anonymous,
+      premium: users.premium,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
 
-  if (userDataError) {
-    throw new Error("Error fetchClienting user data: " + userDataError.message)
-  }
   if (!userData) {
     throw new Error("User record not found for id: " + userId)
   }
 
   // Decide which daily limit to use.
   const isAnonymous = userData.anonymous
-  // (Assuming these are imported from your config)
   const dailyLimit = isAnonymous
     ? NON_AUTH_DAILY_MESSAGE_LIMIT
     : AUTH_DAILY_MESSAGE_LIMIT
 
   // Reset the daily counter if the day has changed (using UTC).
   const now = new Date()
-  let dailyCount = userData.daily_message_count || 0
-  const lastReset = userData.daily_reset ? new Date(userData.daily_reset) : null
+  let dailyCount = userData.dailyMessageCount || 0
+  const lastReset = userData.dailyReset ? new Date(userData.dailyReset) : null
 
   const isNewDay =
     !lastReset ||
@@ -59,14 +53,11 @@ export async function checkUsage(supabase: AnySupabaseClient, userId: string) {
 
   if (isNewDay) {
     dailyCount = 0
-    const { error: resetError } = await supabase
-      .from("users")
-      .update({ daily_message_count: 0, daily_reset: now.toISOString() })
-      .eq("id", userId)
-
-    if (resetError) {
-      throw new Error("Failed to reset daily count: " + resetError.message)
-    }
+    await db
+      .update(users)
+      .set({ dailyMessageCount: 0, dailyReset: now.toISOString() })
+      .where(eq(users.id, userId))
+      .run()
   }
 
   // Check if the daily limit is reached.
@@ -83,69 +74,60 @@ export async function checkUsage(supabase: AnySupabaseClient, userId: string) {
 
 /**
  * Increments both overall and daily message counters for a user.
- *
- * @param supabase - Your Supabase client.
- * @param userId - The ID of the user.
- * @param currentCounts - Current message counts (optional, will be fetchCliented if not provided)
- * @param trackDaily - Whether to track the daily message count (default is true)
- * @throws Error if updating fails.
  */
 export async function incrementUsage(
-  supabase: AnySupabaseClient,
+  db: DbClient,
   userId: string
 ): Promise<void> {
-  const { data: userData, error: userDataError } = await supabase
-    .from("users")
-    .select("message_count, daily_message_count")
-    .eq("id", userId)
-    .maybeSingle()
+  const userData = await db
+    .select({
+      messageCount: users.messageCount,
+      dailyMessageCount: users.dailyMessageCount,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
 
-  if (userDataError || !userData) {
-    throw new Error(
-      "Error fetchClienting user data: " +
-        (userDataError?.message || "User not found")
-    )
+  if (!userData) {
+    throw new Error("User not found")
   }
 
-  const messageCount = userData.message_count || 0
-  const dailyCount = userData.daily_message_count || 0
+  const messageCount = userData.messageCount || 0
+  const dailyCount = userData.dailyMessageCount || 0
 
   // Increment both overall and daily message counts.
   const newOverallCount = messageCount + 1
   const newDailyCount = dailyCount + 1
 
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({
-      message_count: newOverallCount,
-      daily_message_count: newDailyCount,
-      last_active_at: new Date().toISOString(),
+  await db
+    .update(users)
+    .set({
+      messageCount: newOverallCount,
+      dailyMessageCount: newDailyCount,
+      lastActiveAt: new Date().toISOString(),
     })
-    .eq("id", userId)
-
-  if (updateError) {
-    throw new Error("Failed to update usage data: " + updateError.message)
-  }
+    .where(eq(users.id, userId))
+    .run()
 }
 
-export async function checkProUsage(supabase: AnySupabaseClient, userId: string) {
-  const { data: userData, error: userDataError } = await supabase
-    .from("users")
-    .select("daily_pro_message_count, daily_pro_reset")
-    .eq("id", userId)
-    .maybeSingle()
+export async function checkProUsage(db: DbClient, userId: string) {
+  const userData = await db
+    .select({
+      dailyProMessageCount: users.dailyProMessageCount,
+      dailyProReset: users.dailyProReset,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
 
-  if (userDataError) {
-    throw new Error("Error fetching user data: " + userDataError.message)
-  }
   if (!userData) {
     throw new Error("User not found for ID: " + userId)
   }
 
-  let dailyProCount = userData.daily_pro_message_count || 0
+  let dailyProCount = userData.dailyProMessageCount || 0
   const now = new Date()
-  const lastReset = userData.daily_pro_reset
-    ? new Date(userData.daily_pro_reset)
+  const lastReset = userData.dailyProReset
+    ? new Date(userData.dailyProReset)
     : null
 
   const isNewDay =
@@ -156,17 +138,14 @@ export async function checkProUsage(supabase: AnySupabaseClient, userId: string)
 
   if (isNewDay) {
     dailyProCount = 0
-    const { error: resetError } = await supabase
-      .from("users")
-      .update({
-        daily_pro_message_count: 0,
-        daily_pro_reset: now.toISOString(),
+    await db
+      .update(users)
+      .set({
+        dailyProMessageCount: 0,
+        dailyProReset: now.toISOString(),
       })
-      .eq("id", userId)
-
-    if (resetError) {
-      throw new Error("Failed to reset pro usage: " + resetError.message)
-    }
+      .where(eq(users.id, userId))
+      .run()
   }
 
   if (dailyProCount >= DAILY_LIMIT_PRO_MODELS) {
@@ -179,37 +158,33 @@ export async function checkProUsage(supabase: AnySupabaseClient, userId: string)
   }
 }
 
-export async function incrementProUsage(
-  supabase: AnySupabaseClient,
-  userId: string
-) {
-  const { data, error } = await supabase
-    .from("users")
-    .select("daily_pro_message_count")
-    .eq("id", userId)
-    .maybeSingle()
+export async function incrementProUsage(db: DbClient, userId: string) {
+  const userData = await db
+    .select({
+      dailyProMessageCount: users.dailyProMessageCount,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
 
-  if (error || !data) {
+  if (!userData) {
     throw new Error("Failed to fetch user usage for increment")
   }
 
-  const count = data.daily_pro_message_count || 0
+  const count = userData.dailyProMessageCount || 0
 
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({
-      daily_pro_message_count: count + 1,
-      last_active_at: new Date().toISOString(),
+  await db
+    .update(users)
+    .set({
+      dailyProMessageCount: count + 1,
+      lastActiveAt: new Date().toISOString(),
     })
-    .eq("id", userId)
-
-  if (updateError) {
-    throw new Error("Failed to increment pro usage: " + updateError.message)
-  }
+    .where(eq(users.id, userId))
+    .run()
 }
 
 export async function checkUsageByModel(
-  supabase: AnySupabaseClient,
+  db: DbClient,
   userId: string,
   modelId: string,
   isAuthenticated: boolean
@@ -218,22 +193,22 @@ export async function checkUsageByModel(
     if (!isAuthenticated) {
       throw new UsageLimitError("You must log in to use this model.")
     }
-    return await checkProUsage(supabase, userId)
+    return await checkProUsage(db, userId)
   }
 
-  return await checkUsage(supabase, userId)
+  return await checkUsage(db, userId)
 }
 
 export async function incrementUsageByModel(
-  supabase: AnySupabaseClient,
+  db: DbClient,
   userId: string,
   modelId: string,
   isAuthenticated: boolean
 ) {
   if (isProModel(modelId)) {
     if (!isAuthenticated) return
-    return await incrementProUsage(supabase, userId)
+    return await incrementProUsage(db, userId)
   }
 
-  return await incrementUsage(supabase, userId)
+  return await incrementUsage(db, userId)
 }

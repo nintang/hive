@@ -1,43 +1,64 @@
 import {
-  createProject,
-  getAllProjects,
+  createProject as createMockProject,
+  getAllProjects as getAllMockProjects,
   getMockUserId,
 } from "@/lib/mock/projects-store"
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, projects } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq, asc } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
     const { name } = await request.json()
 
-    // If Supabase is not available, use mock store
-    if (!supabase) {
+    // If D1 is not available, use mock store
+    if (!isD1Enabled()) {
       const userId = getMockUserId()
-      const project = createProject(name, userId)
+      const project = createMockProject(name, userId)
       return NextResponse.json(project)
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       // Fall back to mock if not authenticated
-      const userId = getMockUserId()
-      const project = createProject(name, userId)
+      const mockId = getMockUserId()
+      const project = createMockProject(name, mockId)
       return NextResponse.json(project)
     }
 
-    const userId = authData.user.id
+    const db = getDb()
+    const projectId = crypto.randomUUID()
+    const now = new Date().toISOString()
 
-    const { data, error } = await supabase
-      .from("projects")
-      .insert({ name, user_id: userId })
+    await db
+      .insert(projects)
+      .values({
+        id: projectId,
+        name,
+        userId,
+        createdAt: now,
+      })
+      .run()
+
+    const data = await db
       .select()
-      .single()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .get()
 
-    if (error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+    if (!data) {
+      return NextResponse.json({ error: "Failed to create project" }, { status: 500 })
+    }
+
+    // Return in snake_case format for backwards compatibility
+    return NextResponse.json({
+      id: data.id,
+      name: data.name,
+      user_id: data.userId,
+      created_at: data.createdAt,
+    })
   } catch (err: unknown) {
     console.error("Error in projects endpoint:", err)
 
@@ -51,31 +72,37 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const supabase = await createClient()
-
-  // If Supabase is not available, use mock store
-  if (!supabase) {
+  // If D1 is not available, use mock store
+  if (!isD1Enabled()) {
     const userId = getMockUserId()
-    const projects = getAllProjects(userId)
-    return NextResponse.json(projects)
+    const projectsList = getAllMockProjects(userId)
+    return NextResponse.json(projectsList)
   }
 
-  const { data: authData } = await supabase.auth.getUser()
+  const { userId } = await auth()
 
-  const userId = authData?.user?.id
   if (!userId) {
     // Fall back to mock if not authenticated
     const mockUserId = getMockUserId()
-    const projects = getAllProjects(mockUserId)
-    return NextResponse.json(projects)
+    const projectsList = getAllMockProjects(mockUserId)
+    return NextResponse.json(projectsList)
   }
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
+  const db = getDb()
+  const data = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.userId, userId))
+    .orderBy(asc(projects.createdAt))
+    .all()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  // Return in snake_case format for backwards compatibility
+  return NextResponse.json(
+    data.map((p) => ({
+      id: p.id,
+      name: p.name,
+      user_id: p.userId,
+      created_at: p.createdAt,
+    }))
+  )
 }

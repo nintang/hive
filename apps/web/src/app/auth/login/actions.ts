@@ -1,31 +1,20 @@
 "use server"
 
-import { toast } from "@/components/ui/toast"
-import { isSupabaseEnabled } from "@/lib/supabase/config"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@clerk/nextjs/server"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 export async function signOut() {
-  if (!isSupabaseEnabled) {
-    toast({
-      title: "Sign out is not supported in this deployment",
-      status: "info",
-    })
+  const { userId } = await auth()
+
+  if (!userId) {
+    // Not signed in, just redirect
+    redirect("/")
     return
   }
 
-  const supabase = await createClient()
-
-  if (!supabase) {
-    toast({
-      title: "Sign out is not supported in this deployment",
-      status: "info",
-    })
-    return
-  }
-
-  await supabase.auth.signOut()
+  // Clerk handles sign out through its own middleware and components
+  // Redirect to Clerk's sign-out route
   revalidatePath("/", "layout")
-  redirect("/auth/login")
+  redirect("/sign-out")
 }

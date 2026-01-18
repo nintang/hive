@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server"
+import { isD1Enabled } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
 import { getEffectiveApiKey, ProviderWithoutOllama } from "@/lib/user-keys"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -6,18 +7,15 @@ export async function POST(request: NextRequest) {
   try {
     const { provider, userId } = await request.json()
 
-    const supabase = await createClient()
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
         { error: "Database not available" },
         { status: 500 }
       )
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user || user.id !== userId) {
+    const { userId: clerkUserId } = await auth()
+    if (!clerkUserId || clerkUserId !== userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

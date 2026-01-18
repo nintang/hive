@@ -1,36 +1,35 @@
 import { PROVIDERS } from "@/lib/providers"
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, userKeys } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 const SUPPORTED_PROVIDERS = PROVIDERS.map((p) => p.id)
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
-        { error: "Supabase not available" },
+        { error: "Database not available" },
         { status: 500 }
       )
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data, error } = await supabase
-      .from("user_keys")
-      .select("provider")
-      .eq("user_id", authData.user.id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    const db = getDb()
+    const data = await db
+      .select({ provider: userKeys.provider })
+      .from(userKeys)
+      .where(eq(userKeys.userId, userId))
+      .all()
 
     // Create status object for all supported providers
-    const userProviders = data?.map((k) => k.provider) || []
+    const userProviders = data?.map((k: { provider: string }) => k.provider) || []
     const providerStatus = SUPPORTED_PROVIDERS.reduce(
       (acc, provider) => {
         acc[provider] = userProviders.includes(provider)

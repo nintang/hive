@@ -1,10 +1,12 @@
 import {
-  deleteProject,
+  deleteProject as deleteMockProject,
   getMockUserId,
-  getProject,
-  updateProject,
+  getProject as getMockProject,
+  updateProject as updateMockProject,
 } from "@/lib/mock/projects-store"
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, projects } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq, and } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -13,46 +15,47 @@ export async function GET(
 ) {
   try {
     const { projectId } = await params
-    const supabase = await createClient()
 
-    // If Supabase is not available, use mock store
-    if (!supabase) {
+    // If D1 is not available, use mock store
+    if (!isD1Enabled()) {
       const userId = getMockUserId()
-      const project = getProject(projectId, userId)
+      const project = getMockProject(projectId, userId)
       if (!project) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json(project)
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       // Fall back to mock if not authenticated
-      const userId = getMockUserId()
-      const project = getProject(projectId, userId)
+      const mockId = getMockUserId()
+      const project = getMockProject(projectId, mockId)
       if (!project) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json(project)
     }
 
-    const { data, error } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("id", projectId)
-      .eq("user_id", authData.user.id)
-      .single()
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    const db = getDb()
+    const data = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .get()
 
     if (!data) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
-    return NextResponse.json(data)
+    // Return in snake_case format for backwards compatibility
+    return NextResponse.json({
+      id: data.id,
+      name: data.name,
+      user_id: data.userId,
+      created_at: data.createdAt,
+    })
   } catch (err: unknown) {
     console.error("Error in project endpoint:", err)
     return new Response(
@@ -79,47 +82,53 @@ export async function PUT(
       )
     }
 
-    const supabase = await createClient()
-
-    // If Supabase is not available, use mock store
-    if (!supabase) {
+    // If D1 is not available, use mock store
+    if (!isD1Enabled()) {
       const userId = getMockUserId()
-      const project = updateProject(projectId, name.trim(), userId)
+      const project = updateMockProject(projectId, name.trim(), userId)
       if (!project) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json(project)
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       // Fall back to mock if not authenticated
-      const userId = getMockUserId()
-      const project = updateProject(projectId, name.trim(), userId)
+      const mockId = getMockUserId()
+      const project = updateMockProject(projectId, name.trim(), mockId)
       if (!project) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json(project)
     }
 
-    const { data, error } = await supabase
-      .from("projects")
-      .update({ name: name.trim() })
-      .eq("id", projectId)
-      .eq("user_id", authData.user.id)
-      .select()
-      .single()
+    const db = getDb()
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    await db
+      .update(projects)
+      .set({ name: name.trim() })
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .run()
+
+    const data = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .get()
 
     if (!data) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
-    return NextResponse.json(data)
+    // Return in snake_case format for backwards compatibility
+    return NextResponse.json({
+      id: data.id,
+      name: data.name,
+      user_id: data.userId,
+      created_at: data.createdAt,
+    })
   } catch (err: unknown) {
     console.error("Error updating project:", err)
     return new Response(
@@ -137,52 +146,47 @@ export async function DELETE(
 ) {
   try {
     const { projectId } = await params
-    const supabase = await createClient()
 
-    // If Supabase is not available, use mock store
-    if (!supabase) {
+    // If D1 is not available, use mock store
+    if (!isD1Enabled()) {
       const userId = getMockUserId()
-      const deleted = deleteProject(projectId, userId)
+      const deleted = deleteMockProject(projectId, userId)
       if (!deleted) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json({ success: true })
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       // Fall back to mock if not authenticated
-      const userId = getMockUserId()
-      const deleted = deleteProject(projectId, userId)
+      const mockId = getMockUserId()
+      const deleted = deleteMockProject(projectId, mockId)
       if (!deleted) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
       return NextResponse.json({ success: true })
     }
+
+    const db = getDb()
 
     // First verify the project exists and belongs to the user
-    const { data: project, error: fetchError } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("id", projectId)
-      .eq("user_id", authData.user.id)
-      .single()
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .get()
 
-    if (fetchError || !project) {
+    if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
-    // Delete the project (this will cascade delete related chats due to FK constraint)
-    const { error } = await supabase
-      .from("projects")
-      .delete()
-      .eq("id", projectId)
-      .eq("user_id", authData.user.id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    // Delete the project
+    await db
+      .delete(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .run()
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

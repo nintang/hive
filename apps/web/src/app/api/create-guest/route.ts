@@ -1,4 +1,5 @@
-import { createGuestServerClient } from "@/lib/supabase/server-guest"
+import { getDb, isD1Enabled, users } from "@/lib/db"
+import { eq } from "drizzle-orm"
 
 export async function POST(request: Request) {
   try {
@@ -10,9 +11,8 @@ export async function POST(request: Request) {
       })
     }
 
-    const supabase = await createGuestServerClient()
-    if (!supabase) {
-      console.log("Supabase not enabled, skipping guest creation.")
+    if (!isD1Enabled()) {
+      console.log("D1 not enabled, skipping guest creation.")
       return new Response(
         JSON.stringify({ user: { id: userId, anonymous: true } }),
         {
@@ -21,42 +21,72 @@ export async function POST(request: Request) {
       )
     }
 
+    const db = getDb()
+
     // Check if the user record already exists.
-    let { data: userData } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle()
+    let userData = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .get()
 
     if (!userData) {
-      const { data, error } = await supabase
-        .from("users")
-        .insert({
-          id: userId,
-          email: `${userId}@anonymous.example`,
-          anonymous: true,
-          message_count: 0,
-          premium: false,
-          created_at: new Date().toISOString(),
-        })
-        .select("*")
-        .single()
+      try {
+        await db
+          .insert(users)
+          .values({
+            id: userId,
+            email: `${userId}@anonymous.example`,
+            anonymous: true,
+            messageCount: 0,
+            premium: false,
+            createdAt: new Date().toISOString(),
+          })
+          .run()
 
-      if (error || !data) {
+        userData = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()
+
+        if (!userData) {
+          console.error("Error creating guest user: failed to retrieve")
+          return new Response(
+            JSON.stringify({
+              error: "Failed to create guest user",
+            }),
+            { status: 500 }
+          )
+        }
+      } catch (error) {
         console.error("Error creating guest user:", error)
         return new Response(
           JSON.stringify({
             error: "Failed to create guest user",
-            details: error?.message,
+            details: (error as Error).message,
           }),
           { status: 500 }
         )
       }
-
-      userData = data
     }
 
-    return new Response(JSON.stringify({ user: userData }), { status: 200 })
+    // Return in snake_case format for backwards compatibility
+    return new Response(
+      JSON.stringify({
+        user: {
+          id: userData.id,
+          email: userData.email,
+          display_name: userData.displayName,
+          profile_image: userData.profileImage,
+          anonymous: userData.anonymous,
+          premium: userData.premium,
+          message_count: userData.messageCount,
+          created_at: userData.createdAt,
+        },
+      }),
+      { status: 200 }
+    )
   } catch (err: unknown) {
     console.error("Error in create-guest endpoint:", err)
 

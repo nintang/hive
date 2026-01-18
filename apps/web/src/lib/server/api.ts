@@ -1,51 +1,65 @@
-import { createClient } from "@/lib/supabase/server"
-import { createGuestServerClient } from "@/lib/supabase/server-guest"
-import { isSupabaseEnabled } from "../supabase/config"
+import { auth } from "@clerk/nextjs/server"
+import { getDb, isD1Enabled, users } from "@/lib/db"
+import { eq, and } from "drizzle-orm"
 
 /**
- * Validates the user's identity
+ * Validates the user's identity using Clerk authentication
  * @param userId - The ID of the user.
  * @param isAuthenticated - Whether the user is authenticated.
- * @returns The Supabase client.
+ * @returns The database instance if validation succeeds, or null if D1 is not configured.
  */
 export async function validateUserIdentity(
   userId: string,
   isAuthenticated: boolean
 ) {
-  if (!isSupabaseEnabled) {
+  // If D1 is not configured, return null to allow local-only mode
+  if (!isD1Enabled()) {
     return null
   }
 
-  const supabase = isAuthenticated
-    ? await createClient()
-    : await createGuestServerClient()
-
-  if (!supabase) {
-    throw new Error("Failed to initialize Supabase client")
-  }
+  const db = getDb()
 
   if (isAuthenticated) {
-    const { data: authData, error: authError } = await supabase.auth.getUser()
+    const { userId: clerkUserId } = await auth()
 
-    if (authError || !authData?.user?.id) {
+    if (!clerkUserId) {
       throw new Error("Unable to get authenticated user")
     }
 
-    if (authData.user.id !== userId) {
+    if (clerkUserId !== userId) {
       throw new Error("User ID does not match authenticated user")
     }
   } else {
-    const { data: userRecord, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("anonymous", true)
-      .maybeSingle()
+    // For guest/anonymous users, verify they exist in the database
+    const userRecord = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.anonymous, true)))
+      .get()
 
-    if (userError || !userRecord) {
+    if (!userRecord) {
       throw new Error("Invalid or missing guest user")
     }
   }
 
-  return supabase
+  return db
+}
+
+/**
+ * Get the current authenticated user ID from Clerk
+ */
+export async function getAuthUserId(): Promise<string | null> {
+  const { userId } = await auth()
+  return userId
+}
+
+/**
+ * Require authentication - throws if not authenticated
+ */
+export async function requireAuth(): Promise<string> {
+  const { userId } = await auth()
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  return userId
 }

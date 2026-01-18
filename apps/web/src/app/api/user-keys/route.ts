@@ -1,6 +1,8 @@
 import { encryptKey } from "@/lib/encryption"
 import { getModelsForProvider } from "@/lib/models"
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, userKeys, users } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq, and } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
@@ -14,55 +16,67 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
-        { error: "Supabase not available" },
+        { error: "Database not available" },
         { status: 500 }
       )
     }
 
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData?.user?.id) {
+    const { userId } = await auth()
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const db = getDb()
     const { encrypted, iv } = encryptKey(apiKey)
 
     // Check if this is a new API key (not an update)
-    const { data: existingKey } = await supabase
-      .from("user_keys")
-      .select("provider")
-      .eq("user_id", authData.user.id)
-      .eq("provider", provider)
-      .single()
+    const existingKey = await db
+      .select({ provider: userKeys.provider })
+      .from(userKeys)
+      .where(and(eq(userKeys.userId, userId), eq(userKeys.provider, provider)))
+      .get()
 
     const isNewKey = !existingKey
 
-    // Save the API key
-    const { error } = await supabase.from("user_keys").upsert({
-      user_id: authData.user.id,
-      provider,
-      encrypted_key: encrypted,
-      iv,
-      updated_at: new Date().toISOString(),
-    })
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    // Save the API key using INSERT OR REPLACE for SQLite upsert
+    const now = new Date().toISOString()
+    if (isNewKey) {
+      await db
+        .insert(userKeys)
+        .values({
+          userId,
+          provider,
+          encryptedKey: encrypted,
+          iv,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+    } else {
+      await db
+        .update(userKeys)
+        .set({
+          encryptedKey: encrypted,
+          iv,
+          updatedAt: now,
+        })
+        .where(and(eq(userKeys.userId, userId), eq(userKeys.provider, provider)))
+        .run()
     }
 
     // If this is a new API key, add provider models to favorites
     if (isNewKey) {
       try {
         // Get current user's favorite models
-        const { data: userData } = await supabase
-          .from("users")
-          .select("favorite_models")
-          .eq("id", authData.user.id)
-          .single()
+        const userData = await db
+          .select({ favoriteModels: users.favoriteModels })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()
 
-        const currentFavorites = userData?.favorite_models || []
+        const currentFavorites = (userData?.favoriteModels as string[]) || []
 
         // Get models for this provider
         const providerModels = await getModelsForProvider(provider)
@@ -86,14 +100,11 @@ export async function POST(request: Request) {
           const updatedFavorites = [...currentFavorites, ...newModelsToAdd]
 
           // Update user's favorite models
-          const { error: favoritesError } = await supabase
-            .from("users")
-            .update({ favorite_models: updatedFavorites })
-            .eq("id", authData.user.id)
-
-          if (favoritesError) {
-            console.error("Failed to update favorite models:", favoritesError)
-          }
+          await db
+            .update(users)
+            .set({ favoriteModels: updatedFavorites })
+            .where(eq(users.id, userId))
+            .run()
         }
       } catch (modelsError) {
         console.error("Failed to update favorite models:", modelsError)
@@ -128,28 +139,23 @@ export async function DELETE(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    if (!supabase) {
+    if (!isD1Enabled()) {
       return NextResponse.json(
-        { error: "Supabase not available" },
+        { error: "Database not available" },
         { status: 500 }
       )
     }
 
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData?.user?.id) {
+    const { userId } = await auth()
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { error } = await supabase
-      .from("user_keys")
-      .delete()
-      .eq("user_id", authData.user.id)
-      .eq("provider", provider)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    const db = getDb()
+    await db
+      .delete(userKeys)
+      .where(and(eq(userKeys.userId, userId), eq(userKeys.provider, provider)))
+      .run()
 
     return NextResponse.json({ success: true })
   } catch (error) {

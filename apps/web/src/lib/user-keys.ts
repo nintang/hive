@@ -1,7 +1,8 @@
 import { decryptKey } from "./encryption"
+import { getDb, isD1Enabled, userKeys } from "./db"
+import { eq, and } from "drizzle-orm"
 import { env } from "./openproviders/env"
 import { Provider } from "./openproviders/types"
-import { createClient } from "./supabase/server"
 
 export type { Provider } from "./openproviders/types"
 export type ProviderWithoutOllama = Exclude<Provider, "ollama">
@@ -11,19 +12,21 @@ export async function getUserKey(
   provider: Provider
 ): Promise<string | null> {
   try {
-    const supabase = await createClient()
-    if (!supabase) return null
+    if (!isD1Enabled()) return null
 
-    const { data, error } = await supabase
-      .from("user_keys")
-      .select("encrypted_key, iv")
-      .eq("user_id", userId)
-      .eq("provider", provider)
-      .single()
+    const db = getDb()
+    const data = await db
+      .select({
+        encryptedKey: userKeys.encryptedKey,
+        iv: userKeys.iv,
+      })
+      .from(userKeys)
+      .where(and(eq(userKeys.userId, userId), eq(userKeys.provider, provider)))
+      .get()
 
-    if (error || !data) return null
+    if (!data) return null
 
-    return decryptKey(data.encrypted_key, data.iv)
+    return decryptKey(data.encryptedKey, data.iv)
   } catch (error) {
     console.error("Error retrieving user key:", error)
     return null

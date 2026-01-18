@@ -4,14 +4,14 @@ import {
   getModelsWithAccessFlags,
   refreshModelsCache,
 } from "@/lib/models"
-import { createClient } from "@/lib/supabase/server"
+import { getDb, isD1Enabled, userKeys } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
+import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-
-    if (!supabase) {
+    if (!isD1Enabled()) {
       const allModels = await getAllModels()
       const models = allModels.map((model) => ({
         ...model,
@@ -25,9 +25,9 @@ export async function GET() {
       })
     }
 
-    const { data: authData } = await supabase.auth.getUser()
+    const { userId } = await auth()
 
-    if (!authData?.user?.id) {
+    if (!userId) {
       const models = await getModelsWithAccessFlags()
       return new Response(JSON.stringify({ models }), {
         status: 200,
@@ -37,13 +37,14 @@ export async function GET() {
       })
     }
 
-    const { data, error } = await supabase
-      .from("user_keys")
-      .select("provider")
-      .eq("user_id", authData.user.id)
+    const db = getDb()
+    const data = await db
+      .select({ provider: userKeys.provider })
+      .from(userKeys)
+      .where(eq(userKeys.userId, userId))
+      .all()
 
-    if (error) {
-      console.error("Error fetching user keys:", error)
+    if (!data || data.length === 0) {
       const models = await getModelsWithAccessFlags()
       return new Response(JSON.stringify({ models }), {
         status: 200,
@@ -53,17 +54,7 @@ export async function GET() {
       })
     }
 
-    const userProviders = data?.map((k) => k.provider) || []
-
-    if (userProviders.length === 0) {
-      const models = await getModelsWithAccessFlags()
-      return new Response(JSON.stringify({ models }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-    }
+    const userProviders = data.map((k: { provider: string }) => k.provider)
 
     const models = await getModelsForUserProviders(userProviders)
 

@@ -1,24 +1,26 @@
 import { saveFinalAssistantMessage } from "@/app/api/chat/db"
 import type {
   ChatApiParams,
-  LogUserMessageParams,
-  StoreAssistantMessageParams,
-  SupabaseClientType,
+  Message,
 } from "@/app/types/api.types"
 import { FREE_MODELS_IDS, NON_AUTH_ALLOWED_MODELS } from "@/lib/config"
+import { getDb, messages } from "@/lib/db"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import { sanitizeUserInput } from "@/lib/sanitize"
 import { validateUserIdentity } from "@/lib/server/api"
 import { checkUsageByModel, incrementUsage } from "@/lib/usage"
 import { getUserKey, type ProviderWithoutOllama } from "@/lib/user-keys"
+import { Attachment } from "@ai-sdk/ui-utils"
+
+type DbClient = ReturnType<typeof getDb>
 
 export async function validateAndTrackUsage({
   userId,
   model,
   isAuthenticated,
-}: ChatApiParams): Promise<SupabaseClientType | null> {
-  const supabase = await validateUserIdentity(userId, isAuthenticated)
-  if (!supabase) return null
+}: ChatApiParams): Promise<DbClient | null> {
+  const db = await validateUserIdentity(userId, isAuthenticated)
+  if (!db) return null
 
   // Check if user is authenticated
   if (!isAuthenticated) {
@@ -48,22 +50,22 @@ export async function validateAndTrackUsage({
   }
 
   // Check usage limits for the model
-  await checkUsageByModel(supabase, userId, model, isAuthenticated)
+  await checkUsageByModel(db, userId, model, isAuthenticated)
 
-  return supabase
+  return db
 }
 
 export async function incrementMessageCount({
-  supabase,
+  db,
   userId,
 }: {
-  supabase: SupabaseClientType
+  db: DbClient
   userId: string
 }): Promise<void> {
-  if (!supabase) return
+  if (!db) return
 
   try {
-    await incrementUsage(supabase, userId)
+    await incrementUsage(db, userId)
   } catch (err) {
     console.error("Failed to increment message count:", err)
     // Don't throw error as this shouldn't block the chat
@@ -71,44 +73,59 @@ export async function incrementMessageCount({
 }
 
 export async function logUserMessage({
-  supabase,
+  db,
   userId,
   chatId,
   content,
   attachments,
-  model,
-  isAuthenticated,
   message_group_id,
-}: LogUserMessageParams): Promise<void> {
-  if (!supabase) return
+}: {
+  db: DbClient
+  userId: string
+  chatId: string
+  content: string
+  attachments?: Attachment[]
+  message_group_id?: string
+}): Promise<void> {
+  if (!db) return
 
-  const { error } = await supabase.from("messages").insert({
-    chat_id: chatId,
-    role: "user",
-    content: sanitizeUserInput(content),
-    experimental_attachments: attachments,
-    user_id: userId,
-    message_group_id,
-  })
-
-  if (error) {
+  try {
+    await db
+      .insert(messages)
+      .values({
+        chatId,
+        role: "user",
+        content: sanitizeUserInput(content),
+        experimentalAttachments: attachments as unknown,
+        userId,
+        messageGroupId: message_group_id || null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+  } catch (error) {
     console.error("Error saving user message:", error)
   }
 }
 
 export async function storeAssistantMessage({
-  supabase,
+  db,
   chatId,
-  messages,
+  messages: msgList,
   message_group_id,
   model,
-}: StoreAssistantMessageParams): Promise<void> {
-  if (!supabase) return
+}: {
+  db: DbClient
+  chatId: string
+  messages: Message[]
+  message_group_id?: string
+  model?: string
+}): Promise<void> {
+  if (!db) return
   try {
     await saveFinalAssistantMessage(
-      supabase,
+      db,
       chatId,
-      messages,
+      msgList,
       message_group_id,
       model
     )
