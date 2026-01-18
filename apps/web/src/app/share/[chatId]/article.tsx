@@ -4,7 +4,7 @@ import type { Tables } from "@/app/types/database.types"
 import { Message, MessageContent } from "@/components/prompt-kit/message"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { Message as MessageAISDK } from "@ai-sdk/react"
+import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr"
 import Link from "next/link"
 import { Header } from "./header"
@@ -62,7 +62,8 @@ export default function Article({
         </div>
         <div className="mt-20 w-full">
           {messages.map((message) => {
-            const parts = message?.parts as MessageAISDK["parts"]
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const parts = (message?.parts || []) as any
             const sources = getSources(parts)
 
             return (

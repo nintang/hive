@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm"
 import {
   convertFromApiFormat,
   defaultPreferences,
+  type LayoutType,
 } from "@/lib/user-preference-store/utils"
 import type { UserProfile } from "./types"
 
@@ -56,11 +57,11 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   // Format user preferences if they exist
   const formattedPreferences = preferencesData
     ? convertFromApiFormat({
-        layout: preferencesData.layout,
-        prompt_suggestions: preferencesData.promptSuggestions,
-        show_tool_invocations: preferencesData.showToolInvocations,
-        show_conversation_previews: preferencesData.showConversationPreviews,
-        multi_model_enabled: preferencesData.multiModelEnabled,
+        layout: (preferencesData.layout as LayoutType) ?? undefined,
+        prompt_suggestions: preferencesData.promptSuggestions ?? undefined,
+        show_tool_invocations: preferencesData.showToolInvocations ?? undefined,
+        show_conversation_previews: preferencesData.showConversationPreviews ?? undefined,
+        multi_model_enabled: preferencesData.multiModelEnabled ?? undefined,
         hidden_models: preferencesData.hiddenModels ? JSON.parse(preferencesData.hiddenModels) : [],
       })
     : undefined

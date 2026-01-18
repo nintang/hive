@@ -10,7 +10,7 @@ import { ExtendedMessageAISDK } from "@/lib/chat-store/messages/api"
 import { getModelInfo } from "@/lib/models"
 import { PROVIDERS } from "@/lib/providers"
 import { cn } from "@/lib/utils"
-import { Message as MessageType } from "@ai-sdk/react"
+import type { Message as MessageType } from "@ai-sdk/ui-utils"
 import { useMemo } from "react"
 import { Message } from "../chat/message"
 
@@ -63,9 +63,10 @@ function ResponseCard({ response, group }: ResponseCardProps) {
             id={response.message.id}
             variant="assistant"
             parts={
-              response.message.parts || [
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (response.message.parts || [
                 { type: "text", text: response.message.content },
-              ]
+              ]) as any
             }
             attachments={response.message.experimental_attachments}
             onDelete={() => group.onDelete(response.model, response.message.id)}
@@ -127,9 +128,10 @@ export function MultiModelConversation({
                         id={group.userMessage.id}
                         variant="user"
                         parts={
-                          group.userMessage.parts || [
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          (group.userMessage.parts || [
                             { type: "text", text: group.userMessage.content },
-                          ]
+                          ]) as any
                         }
                         attachments={group.userMessage.experimental_attachments}
                         onDelete={() => {}}

@@ -17,12 +17,13 @@ import type {
   XaiModel,
 } from "./types"
 
-type OpenAIChatSettings = Parameters<typeof openai>[1]
-type MistralProviderSettings = Parameters<typeof mistral>[1]
-type GoogleGenerativeAIProviderSettings = Parameters<typeof google>[1]
-type PerplexityProviderSettings = Parameters<typeof perplexity>[0]
-type AnthropicProviderSettings = Parameters<typeof anthropic>[1]
-type XaiProviderSettings = Parameters<typeof xai>[1]
+// Provider settings types - extracted from create* factory functions
+type OpenAIChatSettings = Parameters<typeof createOpenAI>[0]
+type MistralProviderSettings = Parameters<typeof createMistral>[0]
+type GoogleGenerativeAIProviderSettings = Parameters<typeof createGoogleGenerativeAI>[0]
+type PerplexityProviderSettings = Parameters<typeof createPerplexity>[0]
+type AnthropicProviderSettings = Parameters<typeof createAnthropic>[0]
+type XaiProviderSettings = Parameters<typeof createXai>[0]
 type OllamaProviderSettings = OpenAIChatSettings // Ollama uses OpenAI-compatible API
 
 type ModelSettings<T extends SupportedModel> = T extends OpenAIModel
@@ -68,92 +69,62 @@ const createOllamaProvider = () => {
 
 export function openproviders<T extends SupportedModel>(
   modelId: T,
-  settings?: OpenProvidersOptions<T>,
+  _settings?: OpenProvidersOptions<T>,
   apiKey?: string
 ): any {
   const provider = getProviderForModel(modelId)
 
   if (provider === "openai") {
     if (apiKey) {
-      const openaiProvider = createOpenAI({
-        apiKey,
-        compatibility: "strict",
-      })
-      return openaiProvider(
-        modelId as OpenAIModel,
-        settings as OpenAIChatSettings
-      )
+      const openaiProvider = createOpenAI({ apiKey })
+      return openaiProvider(modelId as OpenAIModel)
     }
-    return openai(modelId as OpenAIModel, settings as OpenAIChatSettings)
+    return openai(modelId as OpenAIModel)
   }
 
   if (provider === "mistral") {
     if (apiKey) {
       const mistralProvider = createMistral({ apiKey })
-      return mistralProvider(
-        modelId as MistralModel,
-        settings as MistralProviderSettings
-      )
+      return mistralProvider(modelId as MistralModel)
     }
-    return mistral(modelId as MistralModel, settings as MistralProviderSettings)
+    return mistral(modelId as MistralModel)
   }
 
   if (provider === "google") {
     if (apiKey) {
       const googleProvider = createGoogleGenerativeAI({ apiKey })
-      return googleProvider(
-        modelId as GeminiModel,
-        settings as GoogleGenerativeAIProviderSettings
-      )
+      return googleProvider(modelId as GeminiModel)
     }
-    return google(
-      modelId as GeminiModel,
-      settings as GoogleGenerativeAIProviderSettings
-    )
+    return google(modelId as GeminiModel)
   }
 
   if (provider === "perplexity") {
     if (apiKey) {
       const perplexityProvider = createPerplexity({ apiKey })
-      return perplexityProvider(
-        modelId as PerplexityModel
-        // settings as PerplexityProviderSettings
-      )
+      return perplexityProvider(modelId as PerplexityModel)
     }
-    return perplexity(
-      modelId as PerplexityModel
-      // settings as PerplexityProviderSettings
-    )
+    return perplexity(modelId as PerplexityModel)
   }
 
   if (provider === "anthropic") {
     if (apiKey) {
       const anthropicProvider = createAnthropic({ apiKey })
-      return anthropicProvider(
-        modelId as AnthropicModel,
-        settings as AnthropicProviderSettings
-      )
+      return anthropicProvider(modelId as AnthropicModel)
     }
-    return anthropic(
-      modelId as AnthropicModel,
-      settings as AnthropicProviderSettings
-    )
+    return anthropic(modelId as AnthropicModel)
   }
 
   if (provider === "xai") {
     if (apiKey) {
       const xaiProvider = createXai({ apiKey })
-      return xaiProvider(modelId as XaiModel, settings as XaiProviderSettings)
+      return xaiProvider(modelId as XaiModel)
     }
-    return xai(modelId as XaiModel, settings as XaiProviderSettings)
+    return xai(modelId as XaiModel)
   }
 
   if (provider === "ollama") {
     const ollamaProvider = createOllamaProvider()
-    return ollamaProvider(
-      modelId as OllamaModel,
-      settings as OllamaProviderSettings
-    )
+    return ollamaProvider(modelId as OllamaModel)
   }
 
   throw new Error(`Unsupported model: ${modelId}`)
