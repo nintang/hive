@@ -75,18 +75,18 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <a
-            href="https://x.com/zoladotchat"
+            href="https://x.com/hivechat"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2"
           >
             <XIcon className="size-4 p-0.5" />
-            <span>@zoladotchat</span>
+            <span>@hivechat</span>
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a
-            href="https://github.com/ibelick/zola"
+            href="https://github.com/nintang/hivechat"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2"

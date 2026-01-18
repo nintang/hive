@@ -1,8 +1,8 @@
-# HiveChat - Project Documentation
+# Hive - Project Documentation
 
 ## Overview
 
-HiveChat is a hackathon project that creates a unified chat interface where users can interact with multiple MCP (Model Context Protocol) servers as if they were members of a group chat. Users can @mention specific agents (MCPs) to delegate tasks, and each agent responds with its own identity in the conversation.
+Hive is a hackathon project that creates a unified chat interface where users can interact with multiple MCP (Model Context Protocol) servers as if they were members of a group chat. Users can @mention specific agents (MCPs) to delegate tasks, and each agent responds with its own identity in the conversation.
 
 ## Core Concept
 

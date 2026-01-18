@@ -204,7 +204,7 @@ export function ChatPage() {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 p-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">HiveChat</div>
+          <div className="truncate text-sm font-semibold">Hive</div>
           <div className="truncate text-xs text-muted-foreground">
             Chat UI (shadcn only)
           </div>
@@ -412,7 +412,7 @@ export function ChatPage() {
                   value={composer}
                   onChange={(e) => setComposer(e.target.value)}
                   onKeyDown={onComposerKeyDown}
-                  placeholder="Message HiveChat… (Enter to send, Shift+Enter for newline)"
+                  placeholder="Message Hive… (Enter to send, Shift+Enter for newline)"
                   className="min-h-[44px] resize-none"
                 />
                 <Button
@@ -435,4 +435,3 @@ export function ChatPage() {
     </div>
   );
 }
-
