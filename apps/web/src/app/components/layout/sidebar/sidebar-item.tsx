@@ -15,22 +15,20 @@ type SidebarItemProps = {
 
 export function SidebarItem({ chat, currentChatId }: SidebarItemProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState(chat.title || "")
+  // Local edit state - only used while editing
+  const [localEditTitle, setLocalEditTitle] = useState("")
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const lastChatTitleRef = useRef(chat.title)
   const { updateTitle } = useChats()
   const isMobile = useBreakpoint(768)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
-  if (!isEditing && lastChatTitleRef.current !== chat.title) {
-    lastChatTitleRef.current = chat.title
-    setEditTitle(chat.title || "")
-  }
+  // Display value: use local edit state while editing, otherwise use prop
+  const editTitle = isEditing ? localEditTitle : (chat.title || "")
 
   const handleStartEditing = useCallback(() => {
+    setLocalEditTitle(chat.title || "")
     setIsEditing(true)
-    setEditTitle(chat.title || "")
 
     requestAnimationFrame(() => {
       if (inputRef.current) {
@@ -41,16 +39,17 @@ export function SidebarItem({ chat, currentChatId }: SidebarItemProps) {
   }, [chat.title])
 
   const handleSave = useCallback(async () => {
+    const titleToSave = localEditTitle
     setIsEditing(false)
     setIsMenuOpen(false)
-    await updateTitle(chat.id, editTitle)
-  }, [chat.id, editTitle, updateTitle])
+    await updateTitle(chat.id, titleToSave)
+  }, [chat.id, localEditTitle, updateTitle])
 
   const handleCancel = useCallback(() => {
-    setEditTitle(chat.title || "")
     setIsEditing(false)
     setIsMenuOpen(false)
-  }, [chat.title])
+    // No need to reset localEditTitle - it will be set fresh on next edit start
+  }, [])
 
   const handleMenuOpenChange = useCallback((open: boolean) => {
     setIsMenuOpen(open)
@@ -66,7 +65,7 @@ export function SidebarItem({ chat, currentChatId }: SidebarItemProps) {
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setEditTitle(e.target.value)
+      setLocalEditTitle(e.target.value)
     },
     []
   )

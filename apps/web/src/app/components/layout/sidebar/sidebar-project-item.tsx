@@ -24,19 +24,17 @@ type SidebarProjectItemProps = {
 
 export function SidebarProjectItem({ project }: SidebarProjectItemProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState(project.name || "")
+  // Local edit state - only used while editing
+  const [localEditName, setLocalEditName] = useState("")
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const lastProjectNameRef = useRef(project.name)
   const isMobile = useBreakpoint(768)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const pathname = usePathname()
   const queryClient = useQueryClient()
 
-  if (!isEditing && lastProjectNameRef.current !== project.name) {
-    lastProjectNameRef.current = project.name
-    setEditName(project.name || "")
-  }
+  // Display value: use local edit state while editing, otherwise use prop
+  const editName = isEditing ? localEditName : (project.name || "")
 
   const updateProjectMutation = useMutation({
     mutationFn: async ({
@@ -111,7 +109,7 @@ export function SidebarProjectItem({ project }: SidebarProjectItemProps) {
 
   const handleStartEditing = useCallback(() => {
     setIsEditing(true)
-    setEditName(project.name || "")
+    setLocalEditName(project.name || "")
 
     requestAnimationFrame(() => {
       if (inputRef.current) {
@@ -133,7 +131,7 @@ export function SidebarProjectItem({ project }: SidebarProjectItemProps) {
   }, [project.id, project.name, editName, updateProjectMutation])
 
   const handleCancel = useCallback(() => {
-    setEditName(project.name || "")
+    setLocalEditName(project.name || "")
     setIsEditing(false)
     setIsMenuOpen(false)
   }, [project.name])
@@ -152,7 +150,7 @@ export function SidebarProjectItem({ project }: SidebarProjectItemProps) {
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setEditName(e.target.value)
+      setLocalEditName(e.target.value)
     },
     []
   )
