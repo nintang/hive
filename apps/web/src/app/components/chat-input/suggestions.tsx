@@ -131,12 +131,7 @@ export const Suggestions = memo(function Suggestions({
         ))}
       </motion.div>
     ),
-    [
-      handleSuggestionClick,
-      activeCategoryData?.highlight,
-      activeCategoryData?.items,
-      activeCategoryData?.label,
-    ]
+    [handleSuggestionClick, activeCategoryData]
   )
 
   return (
