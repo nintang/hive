@@ -25,11 +25,13 @@ export async function POST(
     const callbackUrl = `${appUrl}/api/connections/callback`
 
     // Initiate connection with Composio using the link method for OAuth
+    // Allow multiple connected accounts so users can reconnect
     const connectionRequest = await composio.connectedAccounts.initiate(
       userId,
       authConfigId,
       {
         callbackUrl,
+        allowMultiple: true,
       }
     )
 
