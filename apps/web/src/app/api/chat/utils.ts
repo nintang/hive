@@ -1,4 +1,4 @@
-import { Message as MessageAISDK } from "ai"
+import { Message as MessageAISDK } from "@ai-sdk/ui-utils"
 
 /**
  * Clean messages when switching between agents with different tool capabilities.

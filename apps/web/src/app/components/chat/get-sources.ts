@@ -1,9 +1,10 @@
-import type { Message as MessageAISDK } from "@ai-sdk/react"
+import type { UIMessage } from "ai"
 
-export function getSources(parts: MessageAISDK["parts"]) {
+export function getSources(parts: UIMessage["parts"]) {
   const sources = parts
     ?.filter(
-      (part) => part.type === "source" || part.type === "tool-invocation"
+      (part): part is Extract<UIMessage["parts"][number], { type: "source" | "tool-invocation" }> =>
+        part.type === "source" || part.type === "tool-invocation"
     )
     .map((part) => {
       if (part.type === "source") {
@@ -33,8 +34,8 @@ export function getSources(parts: MessageAISDK["parts"]) {
 
   const validSources =
     sources?.filter(
-      (source) =>
-        source && typeof source === "object" && source.url && source.url !== ""
+      (source): source is { url: string; title?: string } =>
+        source && typeof source === "object" && "url" in source && source.url !== ""
     ) || []
 
   return validSources

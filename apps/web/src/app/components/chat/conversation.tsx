@@ -5,12 +5,12 @@ import {
 import { Loader } from "@/components/prompt-kit/loader"
 import { ScrollButton } from "@/components/prompt-kit/scroll-button"
 import { ExtendedMessageAISDK } from "@/lib/chat-store/messages/api"
-import { Message as MessageType } from "@ai-sdk/react"
-import { useRef } from "react"
+import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
+import { useState } from "react"
 import { Message } from "./message"
 
 type ConversationProps = {
-  messages: MessageType[]
+  messages: MessageAISDK[]
   status?: "streaming" | "ready" | "submitted" | "error"
   onDelete: (id: string) => void
   onEdit: (id: string, newText: string) => void
@@ -28,7 +28,8 @@ export function Conversation({
   onQuote,
   isUserAuthenticated,
 }: ConversationProps) {
-  const initialMessageCount = useRef(messages.length)
+  // Initialize with the first message count and never update it
+  const [initialMessageCount] = useState(() => messages.length)
 
   if (!messages || messages.length === 0)
     return <div className="h-full w-full"></div>
@@ -51,7 +52,7 @@ export function Conversation({
             const isLast =
               index === messages.length - 1 && status !== "submitted"
             const hasScrollAnchor =
-              isLast && messages.length > initialMessageCount.current
+              isLast && messages.length > initialMessageCount
 
             return (
               <Message
@@ -72,7 +73,7 @@ export function Conversation({
                 }
                 isUserAuthenticated={isUserAuthenticated}
               >
-                {message.content}
+                {message.content || message.parts?.find((p): p is { type: "text"; text: string } => p.type === "text")?.text || ""}
               </Message>
             )
           })}

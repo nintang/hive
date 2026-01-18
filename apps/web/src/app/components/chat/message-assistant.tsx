@@ -6,7 +6,7 @@ import {
 } from "@/components/prompt-kit/message"
 import { useUserPreferences } from "@/lib/user-preference-store/provider"
 import { cn } from "@/lib/utils"
-import type { Message as MessageAISDK } from "@ai-sdk/react"
+import type { UIMessage } from "ai"
 import { ArrowClockwise, Check, Copy } from "@phosphor-icons/react"
 import { useCallback, useRef } from "react"
 import { getSources } from "./get-sources"
@@ -24,7 +24,7 @@ type MessageAssistantProps = {
   copied?: boolean
   copyToClipboard?: () => void
   onReload?: () => void
-  parts?: MessageAISDK["parts"]
+  parts?: UIMessage["parts"]
   status?: "streaming" | "ready" | "submitted" | "error"
   className?: string
   messageId: string
@@ -176,7 +176,7 @@ export function MessageAssistant({
           <QuoteButton
             mousePosition={selectionInfo.position}
             onQuote={handleQuoteBtnClick}
-            messageContainerRef={messageRef}
+            containerRect={selectionInfo.containerRect}
             onDismiss={clearSelection}
           />
         )}

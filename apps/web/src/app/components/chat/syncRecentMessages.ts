@@ -1,6 +1,6 @@
 import { getLastMessagesFromDb } from "@/lib/chat-store/messages/api"
 import { writeToIndexedDB } from "@/lib/chat-store/persist"
-import type { Message as MessageAI } from "ai"
+import type { Message as MessageAI } from "@ai-sdk/ui-utils"
 
 export async function syncRecentMessages(
   chatId: string,

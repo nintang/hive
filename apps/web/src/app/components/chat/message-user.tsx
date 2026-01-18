@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
 import { isD1Enabled } from "@/lib/db"
 import { cn } from "@/lib/utils"
-import { Message as MessageType } from "@ai-sdk/react"
+import type { Message as MessageAISDK } from "@ai-sdk/ui-utils"
 import {
   Check,
   Copy,
@@ -35,7 +35,7 @@ const getTextFromDataUrl = (dataUrl: string) => {
 
 export type MessageUserProps = {
   hasScrollAnchor?: boolean
-  attachments?: MessageType["experimental_attachments"]
+  attachments?: MessageAISDK["experimental_attachments"]
   children: string
   copied: boolean
   copyToClipboard: () => void

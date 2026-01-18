@@ -1,11 +1,12 @@
 import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
-import { getDb, messages } from "@/lib/db"
+import { messages, connectedAccounts } from "@/lib/db"
 import { getAllModels } from "@/lib/models"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
-import { Attachment } from "@ai-sdk/ui-utils"
-import { Message as MessageAISDK, streamText, ToolSet } from "ai"
-import { eq, gte } from "drizzle-orm"
+import { Attachment, Message as MessageAISDK } from "@ai-sdk/ui-utils"
+import { VercelProvider } from "@composio/vercel"
+import { streamText, ToolSet } from "ai"
+import { eq, and, inArray } from "drizzle-orm"
 import {
   ensureChatExistsInDb,
   incrementMessageCount,
@@ -27,6 +28,7 @@ type ChatRequest = {
   enableSearch: boolean
   message_group_id?: string
   editCutoffTimestamp?: string
+  selectedConnectionIds?: string[]
 }
 
 export async function POST(req: Request) {
@@ -41,6 +43,7 @@ export async function POST(req: Request) {
       enableSearch,
       message_group_id,
       editCutoffTimestamp,
+      selectedConnectionIds,
     } = (await req.json()) as ChatRequest
 
     if (!chatMessages || !rawChatId || !userId) {
@@ -132,17 +135,89 @@ export async function POST(req: Request) {
         undefined
     }
 
+    // Get Composio tools for selected connections
+    let composioTools: ToolSet = {}
+    if (selectedConnectionIds?.length && isAuthenticated && db) {
+      try {
+        // Look up the user's connected accounts that match selected IDs
+        const accounts = await db
+          .select()
+          .from(connectedAccounts)
+          .where(
+            and(
+              eq(connectedAccounts.userId, userId),
+              inArray(connectedAccounts.id, selectedConnectionIds),
+              eq(connectedAccounts.status, "ACTIVE")
+            )
+          )
+          .all()
+
+        if (accounts.length > 0) {
+          // Initialize Composio with VercelProvider - this makes tools.get return Vercel-compatible tools
+          const { Composio } = await import("@composio/core")
+          const composio = new Composio({
+            apiKey: process.env.COMPOSIO_API_KEY,
+            provider: new VercelProvider(),
+          })
+
+          // Get unique toolkit slugs from the accounts
+          const toolkitSlugs = [...new Set(accounts.map((a) => a.toolkitSlug))]
+
+          // Fetch tools from Composio for these toolkits (already in Vercel format)
+          composioTools = await composio.tools.get(userId, {
+            toolkits: toolkitSlugs,
+          })
+        }
+      } catch (err) {
+        console.error("Failed to load Composio tools:", err)
+        // Continue without tools if there's an error
+      }
+    }
+
+    // Filter out data messages and transform for API compatibility
+    // AI SDK v6 UIMessage uses 'parts' array, but streamText expects 'content'
+    const apiMessages = chatMessages
+      .filter((m): m is MessageAISDK & { role: "system" | "user" | "assistant" } =>
+        m.role !== "data"
+      )
+      .map((msg) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, parts, ...rest } = msg as MessageAISDK & { parts?: Array<{ type: string; text?: string }> }
+
+        // If message has content, use it as-is
+        if (rest.content) {
+          return rest
+        }
+
+        // If message only has parts (UIMessage format), extract text content
+        if (parts && Array.isArray(parts)) {
+          const textContent = parts
+            .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
+            .map((p) => p.text)
+            .join("")
+
+          return {
+            ...rest,
+            content: textContent || "",
+          }
+        }
+
+        return rest
+      })
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    // Type casts are required for AI SDK v6 compatibility with model providers
     const result = streamText({
-      model: modelConfig.apiSdk(apiKey, { enableSearch }),
+      model: modelConfig.apiSdk(apiKey, { enableSearch }) as any,
       system: effectiveSystemPrompt,
-      messages: chatMessages,
-      tools: {} as ToolSet,
+      messages: apiMessages as any,
+      tools: composioTools,
       maxSteps: 10,
       onError: (err: unknown) => {
         console.error("Streaming error occurred:", err)
       },
 
-      onFinish: async ({ response }) => {
+      onFinish: async ({ response }: { response: any }) => {
         if (db) {
           await storeAssistantMessage({
             db,
@@ -154,16 +229,15 @@ export async function POST(req: Request) {
           })
         }
       },
-    })
+    } as any)
 
-    return result.toDataStreamResponse({
-      sendReasoning: true,
-      sendSources: true,
-      getErrorMessage: (error: unknown) => {
+    return (result as any).toUIMessageStreamResponse({
+      onError: (error: unknown) => {
         console.error("Error forwarded to client:", error)
         return extractErrorMessage(error)
       },
     })
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   } catch (err: unknown) {
     console.error("Error in /api/chat:", err)
     const error = err as {

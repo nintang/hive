@@ -2,13 +2,14 @@ import { toast } from "@/components/ui/toast"
 import { checkRateLimits } from "@/lib/api"
 import type { Chats } from "@/lib/chat-store/types"
 import { REMAINING_QUERY_ALERT_THRESHOLD } from "@/lib/config"
-import { Message } from "@ai-sdk/react"
+import type { Message } from "@ai-sdk/ui-utils"
 import { useCallback } from "react"
 
 type UseChatOperationsProps = {
   isAuthenticated: boolean
   chatId: string | null
-  messages: Message[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages: Message[] | any[]
   selectedModel: string
   systemPrompt: string
   createNewChat: (
@@ -19,9 +20,8 @@ type UseChatOperationsProps = {
     systemPrompt?: string
   ) => Promise<Chats | undefined>
   setHasDialogAuth: (value: boolean) => void
-  setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[])
-  ) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setMessages: (messages: any[] | ((messages: any[]) => any[])) => void
   setInput: (input: string) => void
 }
 
