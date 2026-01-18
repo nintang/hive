@@ -34,9 +34,10 @@ export function useMessages() {
 }
 
 export function MessagesProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<MessageAISDK[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const { chatId } = useChatSession()
+  const [messages, setMessages] = useState<MessageAISDK[]>([])
+  // Only set isLoading true when there's a chatId to load - avoids hydration mismatch
+  const [isLoading, setIsLoading] = useState(!!chatId)
 
   useEffect(() => {
     if (chatId === null) {
