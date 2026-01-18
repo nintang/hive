@@ -60,12 +60,18 @@ async function executeD1Query(
     }),
   })
 
+  const text = await response.text()
+
   if (!response.ok) {
-    const text = await response.text()
     throw new Error(`D1 HTTP error: ${response.status} ${text}`)
   }
 
-  const data = (await response.json()) as D1Response
+  let data: D1Response
+  try {
+    data = JSON.parse(text) as D1Response
+  } catch {
+    throw new Error(`D1 returned invalid JSON (status ${response.status}): ${text.slice(0, 500)}`)
+  }
 
   if (!data.success) {
     throw new Error(`D1 query error: ${data.errors[0]?.message || "Unknown error"}`)
@@ -73,11 +79,16 @@ async function executeD1Query(
 
   const results = data.result?.[0]?.results || []
 
-  // Handle different methods
-  if (method === "get") {
-    return { rows: results.length > 0 ? [results[0]] : [] }
+  // Debug: log raw D1 response
+  if (sql.includes("user_preferences")) {
+    console.log("[D1 DEBUG] SQL:", sql)
+    console.log("[D1 DEBUG] Raw results:", JSON.stringify(results))
+    console.log("[D1 DEBUG] Method:", method)
   }
 
+  // Handle different methods
+  // sqlite-proxy expects rows as arrays of values, not objects
+  // The column order must match the SELECT order in the SQL
   if (method === "run") {
     return { rows: [] }
   }
@@ -89,12 +100,27 @@ async function executeD1Query(
     }
   }
 
-  // "all" - return all rows
-  return { rows: results }
+  // Convert results to arrays of values
+  const rowArrays = results.map((row) => Object.values(row))
+
+  if (sql.includes("user_preferences")) {
+    console.log("[D1 DEBUG] Returning row arrays:", JSON.stringify(rowArrays))
+    console.log("[D1 DEBUG] Method:", method)
+  }
+
+  // For "get", return a single row as { rows: array } (flat array, not nested)
+  // For "all", return all rows as { rows: array of arrays }
+  if (method === "get") {
+    // Return the first row as a flat array, or empty array if no results
+    return { rows: rowArrays[0] || [] }
+  }
+
+  return { rows: rowArrays }
 }
 
 // Create the Drizzle database instance using sqlite-proxy
-const db = drizzle<typeof schema>(
+// Note: We don't pass { schema } to avoid relational query issues with our custom proxy
+const db = drizzle(
   async (sql, params, method) => {
     try {
       const result = await executeD1Query(sql, params, method)
@@ -103,8 +129,7 @@ const db = drizzle<typeof schema>(
       console.error("D1 query error:", error)
       throw error
     }
-  },
-  { schema }
+  }
 )
 
 // Export the database instance
