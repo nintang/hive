@@ -35,7 +35,8 @@ async function executeD1Query(
   sql: string,
   params: unknown[],
   method: "all" | "run" | "get" | "values"
-): Promise<{ rows: unknown[] }> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<{ rows: any[] }> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
   const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID
   const token = process.env.CLOUDFLARE_D1_TOKEN
@@ -96,10 +97,12 @@ async function executeD1Query(
   // Convert results to arrays of values
   const rowArrays = results.map((row) => Object.values(row))
 
-  // For "get", return a single row as { rows: array } (flat array, not nested)
-  // For "all", return all rows as { rows: array of arrays }
+  // For "get", return a single row as flat array, or undefined if no rows
+  // Drizzle expects { rows: array } where array is the single row's values,
+  // or { rows: undefined } when no row is found
   if (method === "get") {
-    return { rows: rowArrays[0] || [] }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { rows: rowArrays[0] as any }
   }
 
   return { rows: rowArrays }

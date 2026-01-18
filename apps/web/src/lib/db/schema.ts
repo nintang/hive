@@ -128,6 +128,8 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   userKeys: many(userKeys),
   preferences: one(userPreferences),
   feedback: many(feedback),
+  connectedAccounts: many(connectedAccounts),
+  connectionRequests: many(connectionRequests),
 }))
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -194,6 +196,45 @@ export const feedbackRelations = relations(feedback, ({ one }) => ({
   }),
 }))
 
+// Connected accounts table for Composio integrations
+export const connectedAccounts = sqliteTable("connected_accounts", {
+  id: text("id").primaryKey(), // Composio connection ID
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  toolkitSlug: text("toolkit_slug").notNull(),
+  toolkitName: text("toolkit_name").notNull(),
+  toolkitLogo: text("toolkit_logo"),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+// Pending connection requests (for OAuth flow tracking)
+export const connectionRequests = sqliteTable("connection_requests", {
+  id: text("id").primaryKey(), // Connection request ID from Composio
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  toolkitSlug: text("toolkit_slug").notNull(),
+  status: text("status").notNull().default("PENDING"),
+  createdAt: text("created_at").notNull(),
+})
+
+export const connectedAccountsRelations = relations(connectedAccounts, ({ one }) => ({
+  user: one(users, {
+    fields: [connectedAccounts.userId],
+    references: [users.id],
+  }),
+}))
+
+export const connectionRequestsRelations = relations(connectionRequests, ({ one }) => ({
+  user: one(users, {
+    fields: [connectionRequests.userId],
+    references: [users.id],
+  }),
+}))
+
 // Type exports for use in the application
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
@@ -211,3 +252,7 @@ export type UserPreference = typeof userPreferences.$inferSelect
 export type NewUserPreference = typeof userPreferences.$inferInsert
 export type Feedback = typeof feedback.$inferSelect
 export type NewFeedback = typeof feedback.$inferInsert
+export type ConnectedAccount = typeof connectedAccounts.$inferSelect
+export type NewConnectedAccount = typeof connectedAccounts.$inferInsert
+export type ConnectionRequest = typeof connectionRequests.$inferSelect
+export type NewConnectionRequest = typeof connectionRequests.$inferInsert
