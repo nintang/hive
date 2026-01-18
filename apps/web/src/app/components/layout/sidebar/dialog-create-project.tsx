@@ -15,17 +15,42 @@ import { toast } from "@/components/ui/toast"
 import { fetchClient } from "@/lib/fetch"
 import type { Connection } from "@/lib/connections/types"
 import { useConnections } from "@/lib/connections/use-connections"
+import { getAllSkills, type Skill } from "@/lib/skills/client"
 import { cn } from "@/lib/utils"
 import {
   CheckIcon,
   MagnifyingGlassIcon,
   PlugsConnectedIcon,
+  CodeIcon,
+  FileXls,
+  Presentation,
+  FilePdf,
+  FileDoc,
+  ChartBar,
+  Table,
+  TestTube,
+  Sparkle,
+  Code,
 } from "@phosphor-icons/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
+
+// Icon mapping for skills
+const skillIconMap: Record<string, React.ElementType> = {
+  FileXls,
+  Presentation,
+  FilePdf,
+  FileDoc,
+  Code,
+  BarChart: ChartBar,
+  ChartBar,
+  Table,
+  TestTube,
+  Sparkle,
+}
 
 type DialogCreateProjectProps = {
   isOpen: boolean
@@ -45,11 +70,13 @@ export function DialogCreateProject({
 }: DialogCreateProjectProps) {
   const [projectName, setProjectName] = useState("")
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>([])
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const queryClient = useQueryClient()
   const router = useRouter()
 
   const { connections, isLoading: isLoadingConnections } = useConnections()
+  const allSkills = useMemo(() => getAllSkills(), [])
 
   // Only show connected connections as available members
   const connectedConnections = useMemo(() => {
@@ -81,14 +108,27 @@ export function DialogCreateProject({
     )
   }
 
+  const handleSkillToggle = (skillId: string) => {
+    setSelectedSkillIds((prev) =>
+      prev.includes(skillId)
+        ? prev.filter((id) => id !== skillId)
+        : [...prev, skillId]
+    )
+  }
+
+  // Get selected skill objects
+  const selectedSkills = useMemo(() => {
+    return allSkills.filter((s) => selectedSkillIds.includes(s.id))
+  }, [allSkills, selectedSkillIds])
+
   const createProjectMutation = useMutation({
-    mutationFn: async (name: string): Promise<CreateProjectData> => {
+    mutationFn: async ({ name, skillIds }: { name: string; skillIds: string[] }): Promise<CreateProjectData> => {
       const response = await fetchClient("/api/projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, skillIds }),
       })
 
       if (!response.ok) {
@@ -121,6 +161,7 @@ export function DialogCreateProject({
   const resetForm = () => {
     setProjectName("")
     setSelectedConnectionIds([])
+    setSelectedSkillIds([])
     setSearchQuery("")
   }
 
@@ -134,7 +175,7 @@ export function DialogCreateProject({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (projectName.trim()) {
-      createProjectMutation.mutate(projectName.trim())
+      createProjectMutation.mutate({ name: projectName.trim(), skillIds: selectedSkillIds })
     }
   }
 
@@ -223,7 +264,7 @@ export function DialogCreateProject({
                 </div>
 
                 {/* Connection List */}
-                <ScrollArea className="h-[200px]">
+                <ScrollArea className="h-[140px]">
                   <div className="p-1">
                     {isLoadingConnections ? (
                       <div className="text-muted-foreground flex items-center justify-center py-8 text-sm">
@@ -255,6 +296,69 @@ export function DialogCreateProject({
                         ))}
                       </div>
                     )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+
+            {/* Selected Skills Preview */}
+            {selectedSkills.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-muted-foreground text-sm">
+                  Skills ({selectedSkills.length})
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <AnimatePresence mode="popLayout">
+                    {selectedSkills.map((skill) => {
+                      const IconComponent = skillIconMap[skill.icon] || Code
+                      return (
+                        <motion.div
+                          key={skill.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.15 }}
+                          className="bg-accent flex items-center gap-1.5 rounded-full py-1 pr-2 pl-1.5"
+                        >
+                          <IconComponent className="size-4" weight="duotone" />
+                          <span className="text-xs font-medium">
+                            {skill.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleSkillToggle(skill.id)}
+                            className="hover:bg-accent-foreground/10 ml-0.5 rounded-full p-0.5"
+                          >
+                            <span className="text-muted-foreground text-xs">
+                              ×
+                            </span>
+                          </button>
+                        </motion.div>
+                      )
+                    })}
+                  </AnimatePresence>
+                </div>
+              </div>
+            )}
+
+            {/* Add Skills Section */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Skills</label>
+              <p className="text-muted-foreground text-xs">
+                Enable code execution capabilities for this project
+              </p>
+              <div className="border-input rounded-lg border">
+                <ScrollArea className="h-[140px]">
+                  <div className="p-1 space-y-0.5">
+                    {allSkills.map((skill) => (
+                      <SkillItem
+                        key={skill.id}
+                        skill={skill}
+                        isSelected={selectedSkillIds.includes(skill.id)}
+                        onToggle={() => handleSkillToggle(skill.id)}
+                      />
+                    ))}
                   </div>
                 </ScrollArea>
               </div>
@@ -315,6 +419,42 @@ function ConnectionItem({
           <span className="truncate text-sm font-medium">{connection.name}</span>
           <span className="text-muted-foreground truncate text-xs">
             {connection.toolsCount} tools
+          </span>
+        </div>
+      </div>
+      <div className="flex-shrink-0">
+        {isSelected && <CheckIcon className="text-primary size-4" />}
+      </div>
+    </div>
+  )
+}
+
+function SkillItem({
+  skill,
+  isSelected,
+  onToggle,
+}: {
+  skill: Skill
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  const IconComponent = skillIconMap[skill.icon] || Code
+  return (
+    <div
+      className={cn(
+        "hover:bg-accent/50 flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2",
+        isSelected && "bg-accent"
+      )}
+      onClick={onToggle}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="bg-muted flex size-6 flex-shrink-0 items-center justify-center rounded">
+          <IconComponent className="size-4" weight="duotone" />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{skill.name}</span>
+          <span className="text-muted-foreground truncate text-xs">
+            {skill.category}
           </span>
         </div>
       </div>

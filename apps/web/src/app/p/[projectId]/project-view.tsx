@@ -1,8 +1,10 @@
 "use client"
 
 import { ChatInput } from "@/app/components/chat-input/chat-input"
+import type { ToolMode } from "@/app/components/chat-input/button-tool-mode"
 import { Conversation } from "@/app/components/chat/conversation"
 import { useChatOperations } from "@/app/components/chat/use-chat-operations"
+import { useConnectionSelection } from "@/app/components/chat/use-connection-selection"
 import { useFileUpload } from "@/app/components/chat/use-file-upload"
 import { useModel } from "@/app/components/chat/use-model"
 import { ProjectChatItem } from "@/app/components/layout/sidebar/project-chat-item"
@@ -10,21 +12,23 @@ import { toast } from "@/components/ui/toast"
 import { useChats } from "@/lib/chat-store/chats/provider"
 import { useMessages } from "@/lib/chat-store/messages/provider"
 import { MESSAGE_MAX_LENGTH, SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
-import { Attachment } from "@/lib/file-handling"
 import { API_ROUTE_CHAT } from "@/lib/routes"
 import { useUser } from "@/lib/user-store/provider"
 import { cn } from "@/lib/utils"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 import { ChatCircleIcon } from "@phosphor-icons/react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
 
 type Project = {
   id: string
   name: string
   user_id: string
+  last_model_id: string | null
+  last_connection_ids: string[] | null
   created_at: string
 }
 
@@ -37,15 +41,12 @@ export function ProjectView({ projectId }: ProjectViewProps) {
   const [enableSearch, setEnableSearch] = useState(false)
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
   const { user } = useUser()
-  const { createNewChat, bumpChat } = useChats()
-  const { cacheAndAddMessage } = useMessages()
+  const { createNewChat } = useChats()
+  useMessages() // Keep provider mounted
   const pathname = usePathname()
+  const router = useRouter()
   const {
     files,
-    setFiles,
-    handleFileUploads,
-    createOptimisticAttachments,
-    cleanupOptimisticAttachments,
     handleFileUpload,
     handleFileRemove,
   } = useFileUpload()
@@ -85,29 +86,91 @@ export function ProjectView({ projectId }: ProjectViewProps) {
     })
   }, [])
 
+  // AI SDK v6: input state must be managed manually
+  const [input, setInput] = useState("")
+
   const {
     messages,
-    input,
-    handleSubmit,
     status,
-    reload,
+    regenerate,
     stop,
     setMessages,
-    setInput,
   } = useChat({
     id: `project-${projectId}-${currentChatId}`,
-    api: API_ROUTE_CHAT,
-    initialMessages: [],
-    onFinish: cacheAndAddMessage,
+    // AI SDK v6: Use transport instead of api
+    transport: new DefaultChatTransport({ api: API_ROUTE_CHAT }),
+    // AI SDK v6: Use messages instead of initialMessages
+    messages: [],
     onError: handleError,
   })
 
-  const { selectedModel, handleModelChange } = useModel({
+  const queryClient = useQueryClient()
+
+  // Function to update project settings
+  const updateProjectSettings = useCallback(
+    async (updates: { lastModelId?: string; lastConnectionIds?: string[] }) => {
+      try {
+        await fetch(`/api/projects/${projectId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        })
+        // Invalidate project query to refetch
+        queryClient.invalidateQueries({ queryKey: ["project", projectId] })
+      } catch (error) {
+        console.error("Failed to update project settings:", error)
+      }
+    },
+    [projectId, queryClient]
+  )
+
+  // Model selection - use project's lastModelId if available
+  const { selectedModel, handleModelChange: baseHandleModelChange } = useModel({
     currentChat: null,
     user,
     updateChatModel: () => Promise.resolve(),
     chatId: null,
+    lastModelId: project?.last_model_id ?? undefined,
   })
+
+  // Wrap handleModelChange to persist to project
+  const handleModelChange = useCallback(
+    (modelId: string) => {
+      baseHandleModelChange(modelId)
+      updateProjectSettings({ lastModelId: modelId })
+    },
+    [baseHandleModelChange, updateProjectSettings]
+  )
+
+  // Connection selection - use project's lastConnectionIds if available
+  const {
+    selectedConnectionId,
+    setSelectedConnectionId: baseSetSelectedConnectionId,
+    selectedConnectionIds,
+    setSelectedConnectionIds: baseSetSelectedConnectionIds,
+  } = useConnectionSelection({
+    initialConnectionIds: project?.last_connection_ids ?? undefined,
+  })
+
+  // Wrap connection setters to persist to project
+  const setSelectedConnectionId = useCallback(
+    (connectionId: string | undefined) => {
+      baseSetSelectedConnectionId(connectionId)
+      updateProjectSettings({ lastConnectionIds: connectionId ? [connectionId] : [] })
+    },
+    [baseSetSelectedConnectionId, updateProjectSettings]
+  )
+
+  const setSelectedConnectionIds = useCallback(
+    (connectionIds: string[]) => {
+      baseSetSelectedConnectionIds(connectionIds)
+      updateProjectSettings({ lastConnectionIds: connectionIds })
+    },
+    [baseSetSelectedConnectionIds, updateProjectSettings]
+  )
+
+  // Tool mode state
+  const [toolMode, setToolMode] = useState<ToolMode>("single")
 
   // Simplified ensureChatExists for authenticated project context
   const ensureChatExists = useCallback(
@@ -132,8 +195,10 @@ export function ProjectView({ projectId }: ProjectViewProps) {
           if (!newChat) return null
 
           setCurrentChatId(newChat.id)
-          // Redirect to the chat page as expected
-          window.history.pushState(null, "", `/c/${newChat.id}`)
+          // Navigate to the chat page with prompt param - let the chat page send the message
+          // This ensures the chat page's useChat instance handles the streaming
+          const encodedPrompt = encodeURIComponent(input)
+          router.push(`/c/${newChat.id}?prompt=${encodedPrompt}&autosubmit=true`)
           return newChat.id
         } catch (err: unknown) {
           let errorMessage = "Something went wrong."
@@ -188,6 +253,8 @@ export function ProjectView({ projectId }: ProjectViewProps) {
   )
 
   const submit = useCallback(async () => {
+    if (!input.trim()) return
+
     setIsSubmitting(true)
 
     if (!user?.id) {
@@ -195,101 +262,25 @@ export function ProjectView({ projectId }: ProjectViewProps) {
       return
     }
 
-    const optimisticId = `optimistic-${Date.now().toString()}`
-    const optimisticAttachments =
-      files.length > 0 ? createOptimisticAttachments(files) : []
-
-    const optimisticMessage = {
-      id: optimisticId,
-      content: input,
-      role: "user" as const,
-      createdAt: new Date(),
-      experimental_attachments:
-        optimisticAttachments.length > 0 ? optimisticAttachments : undefined,
+    if (input.length > MESSAGE_MAX_LENGTH) {
+      toast({
+        title: `The message you submitted was too long, please submit something shorter. (Max ${MESSAGE_MAX_LENGTH} characters)`,
+        status: "error",
+      })
+      setIsSubmitting(false)
+      return
     }
 
-    setMessages((prev) => [...prev, optimisticMessage])
-    setInput("")
-
-    const submittedFiles = [...files]
-    setFiles([])
-
     try {
-      const currentChatId = await ensureChatExists(user.id)
-      if (!currentChatId) {
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-        cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
-        return
-      }
-
-      if (input.length > MESSAGE_MAX_LENGTH) {
-        toast({
-          title: `The message you submitted was too long, please submit something shorter. (Max ${MESSAGE_MAX_LENGTH} characters)`,
-          status: "error",
-        })
-        setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-        cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
-        return
-      }
-
-      let attachments: Attachment[] | null = []
-      if (submittedFiles.length > 0) {
-        attachments = await handleFileUploads(user.id, currentChatId)
-        if (attachments === null) {
-          setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
-          cleanupOptimisticAttachments(
-            optimisticMessage.experimental_attachments
-          )
-          return
-        }
-      }
-
-      const options = {
-        body: {
-          chatId: currentChatId,
-          userId: user.id,
-          model: selectedModel,
-          isAuthenticated: true,
-          systemPrompt: SYSTEM_PROMPT_DEFAULT,
-          enableSearch,
-        },
-        experimental_attachments: attachments || undefined,
-      }
-
-      handleSubmit(undefined, options)
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-      cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
-      cacheAndAddMessage(optimisticMessage)
-
-      // Bump existing chats to top (non-blocking, after submit)
-      if (messages.length > 0) {
-        bumpChat(currentChatId)
-      }
+      // Create the chat and navigate - the chat page will handle sending the message
+      // ensureChatExists will navigate to /c/[chatId]?prompt=...&autosubmit=true
+      await ensureChatExists(user.id)
     } catch {
-      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
-      cleanupOptimisticAttachments(optimisticMessage.experimental_attachments)
-      toast({ title: "Failed to send message", status: "error" })
+      toast({ title: "Failed to create chat", status: "error" })
     } finally {
       setIsSubmitting(false)
     }
-  }, [
-    user,
-    files,
-    createOptimisticAttachments,
-    input,
-    setMessages,
-    setInput,
-    setFiles,
-    cleanupOptimisticAttachments,
-    ensureChatExists,
-    handleFileUploads,
-    selectedModel,
-    handleSubmit,
-    cacheAndAddMessage,
-    messages.length,
-    bumpChat,
-    enableSearch,
-  ])
+  }, [user, input, ensureChatExists])
 
   const handleReload = useCallback(async () => {
     if (!user?.id) {
@@ -303,11 +294,12 @@ export function ProjectView({ projectId }: ProjectViewProps) {
         model: selectedModel,
         isAuthenticated: true,
         systemPrompt: SYSTEM_PROMPT_DEFAULT,
+        projectId,
       },
     }
 
-    reload(options)
-  }, [user, selectedModel, reload])
+    regenerate(options)
+  }, [user, selectedModel, regenerate, projectId])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -320,7 +312,8 @@ export function ProjectView({ projectId }: ProjectViewProps) {
   // Memoize the conversation props to prevent unnecessary rerenders
   const conversationProps = useMemo(
     () => ({
-      messages,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: messages as any,
       status,
       onDelete: handleDelete,
       onEdit: handleEdit,
@@ -348,6 +341,16 @@ export function ProjectView({ projectId }: ProjectViewProps) {
       status,
       setEnableSearch,
       enableSearch,
+      projectId,
+      // Connection selection props
+      selectedConnectionId,
+      onSelectConnection: setSelectedConnectionId,
+      selectedConnectionIds,
+      onSelectConnections: setSelectedConnectionIds,
+      // Tool mode props
+      toolMode,
+      onToolModeChange: setToolMode,
+      multiSelectConnections: toolMode === "multi",
     }),
     [
       input,
@@ -364,6 +367,12 @@ export function ProjectView({ projectId }: ProjectViewProps) {
       status,
       setEnableSearch,
       enableSearch,
+      projectId,
+      selectedConnectionId,
+      setSelectedConnectionId,
+      selectedConnectionIds,
+      setSelectedConnectionIds,
+      toolMode,
     ]
   )
 
