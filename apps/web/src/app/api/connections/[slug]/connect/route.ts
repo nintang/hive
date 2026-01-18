@@ -1,5 +1,11 @@
 import { auth } from "@clerk/nextjs/server"
-import { getComposioClient, getAuthConfigForToolkit } from "@/lib/composio/client"
+import {
+  getComposioClient,
+  getAuthConfigForToolkit,
+  createNoAuthConnection,
+} from "@/lib/composio/client"
+import { getDb, connectedAccounts, isD1Enabled } from "@/lib/db"
+import { eq, and } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function POST(
@@ -17,6 +23,48 @@ export async function POST(
 
     // Get or create a Composio-managed auth config for this toolkit
     const authConfigId = await getAuthConfigForToolkit(toolkitSlug)
+
+    // If no auth config is needed (no-auth toolkit), save to database
+    if (authConfigId === null) {
+      const connection = await createNoAuthConnection(userId, toolkitSlug)
+
+      // Save no-auth connection to database for persistence
+      if (isD1Enabled()) {
+        const db = getDb()
+        const now = new Date().toISOString()
+
+        // Check if connection already exists
+        const existing = await db
+          .select()
+          .from(connectedAccounts)
+          .where(
+            and(
+              eq(connectedAccounts.userId, userId),
+              eq(connectedAccounts.toolkitSlug, toolkitSlug)
+            )
+          )
+          .get()
+
+        if (!existing) {
+          await db.insert(connectedAccounts).values({
+            id: connection.id,
+            userId,
+            toolkitSlug,
+            toolkitName: toolkitSlug.charAt(0).toUpperCase() + toolkitSlug.slice(1),
+            toolkitLogo: null,
+            status: "ACTIVE",
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+      }
+
+      return NextResponse.json({
+        connected: true,
+        connectionId: connection.id,
+        status: connection.status,
+      })
+    }
 
     // Generate callback URL
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"

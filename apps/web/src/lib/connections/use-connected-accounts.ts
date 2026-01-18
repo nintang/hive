@@ -68,6 +68,14 @@ export function useConnectedAccounts(): UseConnectedAccountsResult {
         }
 
         const data = await response.json()
+
+        // Handle no-auth toolkits that connect directly without OAuth
+        if (data.connected) {
+          // Connection was created directly, refresh the list
+          await fetchAccounts()
+          return null // No redirect needed
+        }
+
         return data.redirectUrl
       } catch (err) {
         setError(err instanceof Error ? err.message : "Connection failed")
@@ -76,7 +84,7 @@ export function useConnectedAccounts(): UseConnectedAccountsResult {
         setIsConnecting(null)
       }
     },
-    []
+    [fetchAccounts]
   )
 
   const disconnectAccount = useCallback(

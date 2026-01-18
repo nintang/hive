@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { getComposioClient } from "@/lib/composio/client"
+import { getDb, connectedAccounts, isD1Enabled } from "@/lib/db"
+import { eq, and } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
 export async function DELETE(
@@ -25,17 +27,38 @@ export async function DELETE(
       (acc) => acc.toolkit.slug === slug && acc.status === "ACTIVE"
     )
 
-    if (!account) {
-      return NextResponse.json(
-        { error: "Connection not found" },
-        { status: 404 }
-      )
+    if (account) {
+      // Delete from Composio (single source of truth)
+      await composio.connectedAccounts.delete(account.id)
+      return NextResponse.json({ success: true })
     }
 
-    // Delete from Composio (single source of truth)
-    await composio.connectedAccounts.delete(account.id)
+    // Check if it's a no-auth connection in the database
+    if (isD1Enabled()) {
+      const db = getDb()
+      const noAuthConnection = await db
+        .select()
+        .from(connectedAccounts)
+        .where(
+          and(
+            eq(connectedAccounts.userId, userId),
+            eq(connectedAccounts.toolkitSlug, slug)
+          )
+        )
+        .get()
 
-    return NextResponse.json({ success: true })
+      if (noAuthConnection && noAuthConnection.id.startsWith("no-auth-")) {
+        await db
+          .delete(connectedAccounts)
+          .where(eq(connectedAccounts.id, noAuthConnection.id))
+        return NextResponse.json({ success: true })
+      }
+    }
+
+    return NextResponse.json(
+      { error: "Connection not found" },
+      { status: 404 }
+    )
   } catch (error) {
     console.error("Error disconnecting account:", error)
     return NextResponse.json(
