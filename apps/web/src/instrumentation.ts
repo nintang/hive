@@ -1,4 +1,3 @@
-import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api"
 import { registerOTel } from "@vercel/otel"
 import {
   isOpenInferenceSpan,
@@ -7,15 +6,14 @@ import {
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto"
 import { SEMRESATTRS_PROJECT_NAME } from "@arizeai/openinference-semantic-conventions"
 
-// Enable debug logging to see what's happening with OTEL
-diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG)
-
 export function register() {
   const spaceId = process.env.ARIZE_SPACE_ID || ""
   const apiKey = process.env.ARIZE_API_KEY || ""
 
-  console.log("[Arize] Initializing with space_id:", spaceId ? "present" : "MISSING")
-  console.log("[Arize] Initializing with api_key:", apiKey ? "present" : "MISSING")
+  // Skip if Arize credentials are not configured
+  if (!spaceId || !apiKey) {
+    return
+  }
 
   registerOTel({
     serviceName: "hivechat",
@@ -35,6 +33,4 @@ export function register() {
       }),
     ],
   })
-
-  console.log("[Arize] OpenTelemetry tracing initialized successfully")
 }
