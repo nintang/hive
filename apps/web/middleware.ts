@@ -1,52 +1,52 @@
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse, type NextRequest } from "next/server"
 
-const isSupabaseEnabled = Boolean(
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+// Define protected routes that require authentication
+const isProtectedRoute = createRouteMatcher([
+  "/api/user-keys(.*)",
+  "/api/user-preferences(.*)",
+  "/api/projects(.*)",
+])
 
-export async function middleware(request: NextRequest) {
-  const response = NextResponse.next()
+// Define public routes that don't require authentication
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/api/health",
+  "/api/models",
+  "/api/providers",
+  "/api/csrf",
+  "/share/(.*)",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+])
 
-  // Only run Supabase session and CSRF when Supabase is enabled
-  if (isSupabaseEnabled) {
-    const { updateSession } = await import("@/utils/supabase/middleware")
-    const { validateCsrfToken } = await import("./src/lib/csrf")
-
-    const supabaseResponse = await updateSession(request)
-
-    // CSRF protection for state-changing requests
-    if (["POST", "PUT", "DELETE"].includes(request.method)) {
-      const csrfCookie = request.cookies.get("csrf_token")?.value
-      const headerToken = request.headers.get("x-csrf-token")
-
-      if (!csrfCookie || !headerToken || !validateCsrfToken(headerToken)) {
-        return new NextResponse("Invalid CSRF token", { status: 403 })
-      }
-    }
-
-    // CSP for development and production
-    const isDev = process.env.NODE_ENV === "development"
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseDomain = supabaseUrl ? new URL(supabaseUrl).origin : ""
-
-    supabaseResponse.headers.set(
-      "Content-Security-Policy",
-      isDev
-        ? `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://assets.onedollarstats.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' wss: https://api.openai.com https://api.mistral.ai https://api.supabase.com ${supabaseDomain} https://api.github.com https://collector.onedollarstats.com;`
-        : `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://analytics.umami.is https://vercel.live https://assets.onedollarstats.com; frame-src 'self' https://vercel.live; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' wss: https://api.openai.com https://api.mistral.ai https://api.supabase.com ${supabaseDomain} https://api-gateway.umami.dev https://api.github.com https://collector.onedollarstats.com;`
-    )
-
-    return supabaseResponse
+export default clerkMiddleware(async (auth, req) => {
+  // Check if this is a protected route
+  if (isProtectedRoute(req)) {
+    await auth.protect()
   }
 
+  const response = NextResponse.next()
+
+  // CSP for development and production
+  const isDev = process.env.NODE_ENV === "development"
+
+  // Add Clerk domains to CSP
+  response.headers.set(
+    "Content-Security-Policy",
+    isDev
+      ? `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://assets.onedollarstats.com https://*.clerk.accounts.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' wss: https://api.openai.com https://api.mistral.ai https://api.cloudflare.com https://api.github.com https://collector.onedollarstats.com https://*.clerk.accounts.dev; frame-src 'self' https://*.clerk.accounts.dev;`
+      : `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://analytics.umami.is https://vercel.live https://assets.onedollarstats.com https://*.clerk.com; frame-src 'self' https://vercel.live https://*.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' wss: https://api.openai.com https://api.mistral.ai https://api.cloudflare.com https://api-gateway.umami.dev https://api.github.com https://collector.onedollarstats.com https://*.clerk.com;`
+  )
+
   return response
-}
+})
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Skip Next.js internals and all static files, unless found in search params
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
   ],
-  runtime: "nodejs",
 }
