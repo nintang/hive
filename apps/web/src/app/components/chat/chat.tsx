@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "motion/react"
 import dynamic from "next/dynamic"
 import { redirect } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
+import { useConnectionSelection } from "./use-connection-selection"
 import { useChatCore } from "./use-chat-core"
 import { useChatOperations } from "./use-chat-operations"
 import { useFileUpload } from "./use-file-upload"
@@ -67,6 +68,14 @@ export function Chat() {
     updateChatModel,
     chatId,
   })
+
+  // Connection selection
+  const {
+    selectedConnectionId,
+    setSelectedConnectionId,
+    selectedConnectionIds,
+    setSelectedConnectionIds,
+  } = useConnectionSelection()
 
   // State to pass between hooks
   const [hasDialogAuth, setHasDialogAuth] = useState(false)
@@ -178,6 +187,11 @@ export function Chat() {
       setEnableSearch,
       enableSearch,
       quotedText,
+      // Connection selection props
+      selectedConnectionId,
+      onSelectConnection: setSelectedConnectionId,
+      selectedConnectionIds,
+      onSelectConnections: setSelectedConnectionIds,
     }),
     [
       input,
@@ -199,6 +213,10 @@ export function Chat() {
       setEnableSearch,
       enableSearch,
       quotedText,
+      selectedConnectionId,
+      setSelectedConnectionId,
+      selectedConnectionIds,
+      setSelectedConnectionIds,
     ]
   )
 
