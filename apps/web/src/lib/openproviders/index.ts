@@ -1,9 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { anthropic, createAnthropic } from "@ai-sdk/anthropic"
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google"
 import { createMistral, mistral } from "@ai-sdk/mistral"
 import { createOpenAI, openai } from "@ai-sdk/openai"
 import { createPerplexity, perplexity } from "@ai-sdk/perplexity"
-import type { LanguageModelV1 } from "@ai-sdk/provider"
 import { createXai, xai } from "@ai-sdk/xai"
 import { getProviderForModel } from "./provider-map"
 import type {
@@ -70,7 +70,7 @@ export function openproviders<T extends SupportedModel>(
   modelId: T,
   settings?: OpenProvidersOptions<T>,
   apiKey?: string
-): LanguageModelV1 {
+): any {
   const provider = getProviderForModel(modelId)
 
   if (provider === "openai") {
