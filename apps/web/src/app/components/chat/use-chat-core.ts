@@ -175,14 +175,16 @@ export function useChatCore({
   }, [prompt])
 
   // Reset messages when navigating from a chat to home
-  if (
-    prevChatIdRef.current !== null &&
-    chatId === null &&
-    messages.length > 0
-  ) {
-    setMessages([])
-  }
-  prevChatIdRef.current = chatId
+  useEffect(() => {
+    if (
+      prevChatIdRef.current !== null &&
+      chatId === null &&
+      messages.length > 0
+    ) {
+      setMessages([])
+    }
+    prevChatIdRef.current = chatId
+  }, [chatId, messages.length, setMessages])
 
   // Submit action
   const submit = useCallback(async () => {
@@ -255,6 +257,7 @@ export function useChatCore({
       cleanupOptimisticAttachments(optimisticAttachments)
 
       // Use sendMessage with AI SDK v6 API
+      // Note: sendMessage handles adding the user message to state internally
       await sendMessage(
         { text: submittedInput },
         {
@@ -269,7 +272,8 @@ export function useChatCore({
         }
       )
 
-      cacheAndAddMessage(optimisticMessage)
+      // Don't call cacheAndAddMessage here - sendMessage already adds the user message
+      // and onFinish will cache the assistant message
       clearDraft()
       setHasSentFirstMessage(true)
 
@@ -299,7 +303,6 @@ export function useChatCore({
     systemPrompt,
     enableSearch,
     sendMessage,
-    cacheAndAddMessage,
     clearDraft,
     messages.length,
     bumpChat,
