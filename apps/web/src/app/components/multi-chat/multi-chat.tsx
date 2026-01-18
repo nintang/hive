@@ -12,7 +12,8 @@ import { useUser } from "@/lib/user-store/provider"
 import { cn } from "@/lib/utils"
 import type { Message } from "@ai-sdk/ui-utils"
 import { AnimatePresence, motion } from "motion/react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MultiChatInput } from "./multi-chat-input"
 import { useMultiChat } from "./use-multi-chat"
 
@@ -29,6 +30,16 @@ type GroupedMessage = {
   onReload: (model: string) => void
 }
 
+// Helper to extract text content from AI SDK v6 messages (which may use parts instead of content)
+function getMessageContent(message: Message): string {
+  if (message.content) return message.content
+  if (message.parts) {
+    const textPart = message.parts.find((part) => part.type === "text")
+    if (textPart && "text" in textPart) return textPart.text
+  }
+  return ""
+}
+
 export function MultiChat() {
   const [prompt, setPrompt] = useState("")
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([])
@@ -39,6 +50,8 @@ export function MultiChat() {
   const [multiChatId, setMultiChatId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const hasAutosubmitted = useRef(false)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     setMounted(true)
@@ -116,8 +129,8 @@ export function MultiChat() {
       const message = persistedMessages[i]
 
       if (message.role === "user") {
-        const groupKey = message.content
-        if (!groups[groupKey]) {
+        const groupKey = getMessageContent(message)
+        if (groupKey && !groups[groupKey]) {
           groups[groupKey] = {
             userMessage: message,
             assistantMessages: [],
@@ -133,14 +146,16 @@ export function MultiChat() {
         }
 
         if (associatedUserMessage) {
-          const groupKey = associatedUserMessage.content
-          if (!groups[groupKey]) {
+          const groupKey = getMessageContent(associatedUserMessage)
+          if (groupKey && !groups[groupKey]) {
             groups[groupKey] = {
               userMessage: associatedUserMessage,
               assistantMessages: [],
             }
           }
-          groups[groupKey].assistantMessages.push(message)
+          if (groupKey && groups[groupKey]) {
+            groups[groupKey].assistantMessages.push(message)
+          }
         }
       }
     }
@@ -183,7 +198,8 @@ export function MultiChat() {
         const assistantMsg = chat.messages[i + 1]
 
         if (userMsg?.role === "user") {
-          const groupKey = userMsg.content
+          const groupKey = getMessageContent(userMsg)
+          if (!groupKey) continue // Skip messages with no content
 
           if (!liveGroups[groupKey]) {
             liveGroups[groupKey] = {
@@ -210,7 +226,7 @@ export function MultiChat() {
             }
           } else if (
             chat.isLoading &&
-            userMsg.content === prompt &&
+            getMessageContent(userMsg) === prompt &&
             selectedModelIds.includes(chat.model.id)
           ) {
             const placeholderMessage: Message = {
@@ -336,6 +352,48 @@ export function MultiChat() {
       ),
     [modelChats, selectedModelIds]
   )
+
+  // Handle autosubmit from URL params (e.g., coming from project page)
+  const urlPrompt = searchParams?.get("prompt")
+  const autosubmit = searchParams?.get("autosubmit") === "true"
+  const urlConnectionIds = searchParams?.get("connectionIds")
+
+  useEffect(() => {
+    if (
+      autosubmit &&
+      urlPrompt &&
+      !hasAutosubmitted.current &&
+      selectedModelIds.length > 0 &&
+      !isSubmitting
+    ) {
+      hasAutosubmitted.current = true
+      setPrompt(urlPrompt)
+
+      // Parse connection IDs from URL if present
+      if (urlConnectionIds) {
+        try {
+          const parsedIds = JSON.parse(decodeURIComponent(urlConnectionIds))
+          if (Array.isArray(parsedIds)) {
+            setSelectedConnectionIds(parsedIds)
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // Use setTimeout to ensure state is set before submitting
+      setTimeout(() => {
+        // Clean up URL
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href)
+          url.searchParams.delete("prompt")
+          url.searchParams.delete("autosubmit")
+          url.searchParams.delete("connectionIds")
+          window.history.replaceState(null, "", url.toString())
+        }
+      }, 100)
+    }
+  }, [autosubmit, urlPrompt, urlConnectionIds, selectedModelIds, isSubmitting])
 
   const conversationProps = useMemo(() => ({ messageGroups }), [messageGroups])
 

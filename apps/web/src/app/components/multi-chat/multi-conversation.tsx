@@ -11,8 +11,21 @@ import { getModelInfo } from "@/lib/models"
 import { PROVIDERS } from "@/lib/providers"
 import { cn } from "@/lib/utils"
 import type { Message as MessageType } from "@ai-sdk/ui-utils"
+import type { UIMessage } from "ai"
 import { useMemo } from "react"
 import { Message } from "../chat/message"
+
+// Helper to extract text content from AI SDK v6 messages (which may use parts instead of content)
+function getMessageContent(message: MessageType): string {
+  if (message.content) return message.content
+  if ((message as UIMessage).parts) {
+    const textPart = (message as UIMessage).parts?.find(
+      (part) => part.type === "text"
+    )
+    if (textPart && "text" in textPart) return textPart.text
+  }
+  return ""
+}
 
 type GroupedMessage = {
   userMessage: MessageType
@@ -65,7 +78,10 @@ function ResponseCard({ response, group }: ResponseCardProps) {
             parts={
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (response.message.parts || [
-                { type: "text", text: response.message.content },
+                {
+                  type: "text",
+                  text: getMessageContent(response.message),
+                },
               ]) as any
             }
             attachments={response.message.experimental_attachments}
@@ -77,7 +93,7 @@ function ResponseCard({ response, group }: ResponseCardProps) {
             hasScrollAnchor={false}
             className="bg-transparent p-0 px-0"
           >
-            {response.message.content}
+            {getMessageContent(response.message)}
           </Message>
         ) : response.isLoading ? (
           <div className="space-y-2">
@@ -130,7 +146,10 @@ export function MultiModelConversation({
                         parts={
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           (group.userMessage.parts || [
-                            { type: "text", text: group.userMessage.content },
+                            {
+                              type: "text",
+                              text: getMessageContent(group.userMessage),
+                            },
                           ]) as any
                         }
                         attachments={group.userMessage.experimental_attachments}
@@ -143,7 +162,7 @@ export function MultiModelConversation({
                             .message_group_id ?? null
                         }
                       >
-                        {group.userMessage.content}
+                        {getMessageContent(group.userMessage)}
                       </Message>
                     </div>
 
