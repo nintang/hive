@@ -7,6 +7,7 @@ import { Attachment } from "@ai-sdk/ui-utils"
 import { Message as MessageAISDK, streamText, ToolSet } from "ai"
 import { eq, gte } from "drizzle-orm"
 import {
+  ensureChatExistsInDb,
   incrementMessageCount,
   logUserMessage,
   storeAssistantMessage,
@@ -18,7 +19,7 @@ export const maxDuration = 60
 
 type ChatRequest = {
   messages: MessageAISDK[]
-  chatId: string
+  chatId: string | { id?: string }
   userId: string
   model: string
   isAuthenticated: boolean
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   try {
     const {
       messages: chatMessages,
-      chatId,
+      chatId: rawChatId,
       userId,
       model,
       isAuthenticated,
@@ -42,9 +43,21 @@ export async function POST(req: Request) {
       editCutoffTimestamp,
     } = (await req.json()) as ChatRequest
 
-    if (!chatMessages || !chatId || !userId) {
+    if (!chatMessages || !rawChatId || !userId) {
       return new Response(
         JSON.stringify({ error: "Error, missing information" }),
+        { status: 400 }
+      )
+    }
+
+    // Ensure chatId is a string, not an object (fix for object being passed as chatId)
+    const chatId = typeof rawChatId === "object"
+      ? rawChatId.id || JSON.stringify(rawChatId)
+      : String(rawChatId)
+
+    if (!chatId || chatId === "[object Object]" || chatId.startsWith("{")) {
+      return new Response(
+        JSON.stringify({ error: "Invalid chatId format - expected string UUID" }),
         { status: 400 }
       )
     }
@@ -61,6 +74,20 @@ export async function POST(req: Request) {
     }
 
     const userMessage = chatMessages[chatMessages.length - 1]
+
+    // Ensure the chat exists in D1 before inserting messages
+    // This handles cases where the chat was created client-side only
+    if (db) {
+      await ensureChatExistsInDb({
+        db,
+        chatId,
+        userId,
+        model,
+        title: typeof userMessage?.content === "string"
+          ? userMessage.content.slice(0, 100)
+          : "New Chat",
+      })
+    }
 
     // If editing, delete messages from cutoff BEFORE saving the new user message
     if (db && editCutoffTimestamp) {

@@ -4,13 +4,14 @@ import type {
   Message,
 } from "@/app/types/api.types"
 import { FREE_MODELS_IDS, NON_AUTH_ALLOWED_MODELS } from "@/lib/config"
-import { getDb, messages } from "@/lib/db"
+import { chats, getDb, messages } from "@/lib/db"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import { sanitizeUserInput } from "@/lib/sanitize"
 import { validateUserIdentity } from "@/lib/server/api"
 import { checkUsageByModel, incrementUsage } from "@/lib/usage"
 import { getUserKey, type ProviderWithoutOllama } from "@/lib/user-keys"
 import { Attachment } from "@ai-sdk/ui-utils"
+import { eq } from "drizzle-orm"
 
 type DbClient = ReturnType<typeof getDb>
 
@@ -70,6 +71,50 @@ export async function incrementMessageCount({
     console.error("Failed to increment message count:", err)
     // Don't throw error as this shouldn't block the chat
   }
+}
+
+/**
+ * Ensures the chat exists in D1. If it doesn't, creates it.
+ * This handles the case where a chat was created client-side only
+ * or from an old session that wasn't properly synced.
+ */
+export async function ensureChatExistsInDb({
+  db,
+  chatId,
+  userId,
+  model,
+  title,
+}: {
+  db: DbClient
+  chatId: string
+  userId: string
+  model: string
+  title?: string
+}): Promise<void> {
+  if (!db) return
+
+  const existingChat = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(eq(chats.id, chatId))
+    .get()
+
+  if (existingChat && existingChat.id) {
+    return
+  }
+
+  const now = new Date().toISOString()
+  await db
+    .insert(chats)
+    .values({
+      id: chatId,
+      userId,
+      title: title || "New Chat",
+      model,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
 }
 
 export async function logUserMessage({
