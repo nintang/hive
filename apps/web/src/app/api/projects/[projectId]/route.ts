@@ -1,3 +1,9 @@
+import {
+  deleteProject,
+  getMockUserId,
+  getProject,
+  updateProject,
+} from "@/lib/mock/projects-store"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -9,17 +15,26 @@ export async function GET(
     const { projectId } = await params
     const supabase = await createClient()
 
+    // If Supabase is not available, use mock store
     if (!supabase) {
-      return new Response(
-        JSON.stringify({ error: "Supabase not available in this deployment." }),
-        { status: 200 }
-      )
+      const userId = getMockUserId()
+      const project = getProject(projectId, userId)
+      if (!project) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json(project)
     }
 
     const { data: authData } = await supabase.auth.getUser()
 
     if (!authData?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      // Fall back to mock if not authenticated
+      const userId = getMockUserId()
+      const project = getProject(projectId, userId)
+      if (!project) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json(project)
     }
 
     const { data, error } = await supabase
@@ -66,17 +81,26 @@ export async function PUT(
 
     const supabase = await createClient()
 
+    // If Supabase is not available, use mock store
     if (!supabase) {
-      return new Response(
-        JSON.stringify({ error: "Supabase not available in this deployment." }),
-        { status: 200 }
-      )
+      const userId = getMockUserId()
+      const project = updateProject(projectId, name.trim(), userId)
+      if (!project) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json(project)
     }
 
     const { data: authData } = await supabase.auth.getUser()
 
     if (!authData?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      // Fall back to mock if not authenticated
+      const userId = getMockUserId()
+      const project = updateProject(projectId, name.trim(), userId)
+      if (!project) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json(project)
     }
 
     const { data, error } = await supabase
@@ -115,17 +139,26 @@ export async function DELETE(
     const { projectId } = await params
     const supabase = await createClient()
 
+    // If Supabase is not available, use mock store
     if (!supabase) {
-      return new Response(
-        JSON.stringify({ error: "Supabase not available in this deployment." }),
-        { status: 200 }
-      )
+      const userId = getMockUserId()
+      const deleted = deleteProject(projectId, userId)
+      if (!deleted) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json({ success: true })
     }
 
     const { data: authData } = await supabase.auth.getUser()
 
     if (!authData?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      // Fall back to mock if not authenticated
+      const userId = getMockUserId()
+      const deleted = deleteProject(projectId, userId)
+      if (!deleted) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
+      return NextResponse.json({ success: true })
     }
 
     // First verify the project exists and belongs to the user

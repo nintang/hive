@@ -1,28 +1,33 @@
+import {
+  createProject,
+  getAllProjects,
+  getMockUserId,
+} from "@/lib/mock/projects-store"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
+    const { name } = await request.json()
 
+    // If Supabase is not available, use mock store
     if (!supabase) {
-      return new Response(
-        JSON.stringify({ error: "Supabase not available in this deployment." }),
-        { status: 503 }
-      )
+      const userId = getMockUserId()
+      const project = createProject(name, userId)
+      return NextResponse.json(project)
     }
 
     const { data: authData } = await supabase.auth.getUser()
 
     if (!authData?.user?.id) {
-      return new Response(JSON.stringify({ error: "Missing userId" }), {
-        status: 400,
-      })
+      // Fall back to mock if not authenticated
+      const userId = getMockUserId()
+      const project = createProject(name, userId)
+      return NextResponse.json(project)
     }
 
     const userId = authData.user.id
-
-    const { name } = await request.json()
 
     const { data, error } = await supabase
       .from("projects")
@@ -48,18 +53,22 @@ export async function POST(request: Request) {
 export async function GET() {
   const supabase = await createClient()
 
+  // If Supabase is not available, use mock store
   if (!supabase) {
-    return new Response(
-      JSON.stringify({ error: "Supabase not available in this deployment." }),
-      { status: 503 }
-    )
+    const userId = getMockUserId()
+    const projects = getAllProjects(userId)
+    return NextResponse.json(projects)
   }
 
   const { data: authData } = await supabase.auth.getUser()
 
   const userId = authData?.user?.id
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!userId) {
+    // Fall back to mock if not authenticated
+    const mockUserId = getMockUserId()
+    const projects = getAllProjects(mockUserId)
+    return NextResponse.json(projects)
+  }
 
   const { data, error } = await supabase
     .from("projects")
