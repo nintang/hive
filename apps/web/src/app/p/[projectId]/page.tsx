@@ -1,6 +1,7 @@
 import { LayoutApp } from "@/app/components/layout/layout-app"
 import { ProjectView } from "@/app/p/[projectId]/project-view"
 import { MessagesProvider } from "@/lib/chat-store/messages/provider"
+import { getMockUserId, getProject } from "@/lib/mock/projects-store"
 import { isSupabaseEnabled } from "@/lib/supabase/config"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
@@ -31,6 +32,13 @@ export default async function Page({ params }: Props) {
       if (projectError || !project) {
         redirect("/")
       }
+    }
+  } else {
+    // Mock mode: verify project exists in mock store
+    const mockUserId = getMockUserId()
+    const project = getProject(projectId, mockUserId)
+    if (!project) {
+      redirect("/")
     }
   }
 
