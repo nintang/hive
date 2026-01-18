@@ -10,17 +10,17 @@ import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
 import { useModel } from "@/lib/model-store/provider"
 import { useUser } from "@/lib/user-store/provider"
 import { cn } from "@/lib/utils"
-import { Message as MessageType } from "@ai-sdk/react"
+import type { Message } from "@ai-sdk/ui-utils"
 import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { MultiChatInput } from "./multi-chat-input"
 import { useMultiChat } from "./use-multi-chat"
 
 type GroupedMessage = {
-  userMessage: MessageType
+  userMessage: Message
   responses: {
     model: string
-    message: MessageType
+    message: Message
     isLoading?: boolean
     provider: string
   }[]
@@ -61,8 +61,8 @@ export function MultiChat() {
 
   const modelsFromPersisted = useMemo(() => {
     return persistedMessages
-      .filter((msg) => (msg as any).model)
-      .map((msg) => (msg as any).model)
+      .filter((msg) => (msg as Message & { model?: string }).model)
+      .map((msg) => (msg as Message & { model?: string }).model)
   }, [persistedMessages])
 
   const modelsFromLastGroup = useMemo(() => {
@@ -76,8 +76,9 @@ export function MultiChat() {
     for (let i = lastUserIndex + 1; i < persistedMessages.length; i++) {
       const msg = persistedMessages[i]
       if (msg.role === "user") break
-      if (msg.role === "assistant" && (msg as any).model) {
-        modelsInLastGroup.push((msg as any).model)
+      const msgWithModel = msg as Message & { model?: string }
+      if (msg.role === "assistant" && msgWithModel.model) {
+        modelsInLastGroup.push(msgWithModel.model)
       }
     }
     return modelsInLastGroup
@@ -106,8 +107,8 @@ export function MultiChat() {
 
     const groups: {
       [key: string]: {
-        userMessage: MessageType
-        assistantMessages: MessageType[]
+        userMessage: Message
+        assistantMessages: Message[]
       }
     } = {}
 
@@ -149,8 +150,9 @@ export function MultiChat() {
         persistedGroups[groupKey] = {
           userMessage: group.userMessage,
           responses: group.assistantMessages.map((msg, index) => {
+            const msgWithModel = msg as Message & { model?: string }
             const model =
-              (msg as any).model || selectedModelIds[index] || `model-${index}`
+              msgWithModel.model || selectedModelIds[index] || `model-${index}`
             const provider =
               models.find((m) => m.id === model)?.provider || "unknown"
 
@@ -211,7 +213,7 @@ export function MultiChat() {
             userMsg.content === prompt &&
             selectedModelIds.includes(chat.model.id)
           ) {
-            const placeholderMessage: MessageType = {
+            const placeholderMessage: Message = {
               id: `loading-${chat.model.id}`,
               role: "assistant",
               content: "",
@@ -394,7 +396,7 @@ export function MultiChat() {
             transition={{ layout: { duration: 0 } }}
           >
             <h1 className="mb-6 text-3xl font-medium tracking-tight">
-              What's on your mind?
+              What&apos;s on your mind?
             </h1>
           </motion.div>
         ) : (

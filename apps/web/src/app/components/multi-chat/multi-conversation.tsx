@@ -11,7 +11,7 @@ import { getModelInfo } from "@/lib/models"
 import { PROVIDERS } from "@/lib/providers"
 import { cn } from "@/lib/utils"
 import { Message as MessageType } from "@ai-sdk/react"
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { Message } from "../chat/message"
 
 type GroupedMessage = {
@@ -98,24 +98,13 @@ function ResponseCard({ response, group }: ResponseCardProps) {
 export function MultiModelConversation({
   messageGroups,
 }: MultiModelConversationProps) {
-  // State to manage the order of responses for each group
-  const [groupResponses, setGroupResponses] = useState<
-    Record<number, GroupedMessage["responses"]>
-  >(() => {
-    const initial: Record<number, GroupedMessage["responses"]> = {}
+  // Derive group responses directly from messageGroups
+  const groupResponses = useMemo(() => {
+    const responses: Record<number, GroupedMessage["responses"]> = {}
     messageGroups.forEach((group, index) => {
-      initial[index] = [...group.responses]
+      responses[index] = [...group.responses]
     })
-    return initial
-  })
-
-  // Update group responses when messageGroups changes
-  useEffect(() => {
-    const updated: Record<number, GroupedMessage["responses"]> = {}
-    messageGroups.forEach((group, index) => {
-      updated[index] = [...group.responses]
-    })
-    setGroupResponses(updated)
+    return responses
   }, [messageGroups])
 
   return (
